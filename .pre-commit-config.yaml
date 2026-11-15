@@ -1,0 +1,78 @@
+# Local pre-commit hooks — run on local before each commit.
+# Setup (one-time, from the repo root):
+#   uv run --directory backend pre-commit install
+#
+# Manual run on the whole repo (e.g. right after installing):
+#   uv run --directory backend pre-commit run --all-files
+
+
+repos:
+  # --------------------------------------------------
+  # Vérifications générales
+  # --------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+
+      - id: end-of-file-fixer
+        exclude: \.png$
+
+      - id: check-yaml
+
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+
+      - id: check-merge-conflict
+
+  # --------------------------------------------------
+  # Backend : Python (uv)
+  # --------------------------------------------------
+  - repo: local
+    hooks:
+      - id: backend-ruff-check
+        name: Backend - Ruff check
+        entry: uv run --directory backend ruff check .
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: backend-ruff-format
+        name: Backend - Ruff format
+        entry: uv run --directory backend ruff format --check .
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: backend-pytest
+        name: Backend - Pytest
+        entry: uv run --directory backend python -m pytest
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  # --------------------------------------------------
+  # Frontend : Node.js / npm
+  # --------------------------------------------------
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: Frontend - ESLint
+        entry: npm --prefix frontend run lint
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: frontend-typecheck
+        name: Frontend - TypeScript typecheck
+        entry: npm --prefix frontend run typecheck
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: frontend-build
+        name: Frontend - Build
+        entry: npm --prefix frontend run build
+        language: system
+        pass_filenames: false
+        always_run: true
