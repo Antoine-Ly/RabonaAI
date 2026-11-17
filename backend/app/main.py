@@ -1,13 +1,23 @@
 """Point d'entrée FastAPI : `uvicorn app.main:app`."""
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
-from app.routes import health
+from app.routes import chat, health
+from app.services.llm.groq import GroqClient, build_groq_client
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    if isinstance(app.state.llm, GroqClient):
+        await app.state.llm.check_model()
+    yield
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -23,8 +33,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url=None if is_prod else "/docs",
         redoc_url=None,
         openapi_url=None if is_prod else "/openapi.json",
+        lifespan=lifespan,
     )
     app.state.settings = settings
+    app.state.llm = build_groq_client(settings)
 
     # Authentification par en-tête Bearer, sans cookie : pas de credentials CORS.
     app.add_middleware(
@@ -36,6 +48,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     register_error_handlers(app)
     app.include_router(health.router)
+    app.include_router(chat.router)
     return app
 
 

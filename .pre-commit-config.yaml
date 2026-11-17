@@ -1,29 +1,49 @@
 # Local pre-commit hooks — run on local before each commit.
 # Setup (one-time, from the repo root):
-#   uv run --directory backend pre-commit install
+#   uv run --directory backend python -m pre_commit install
 #
 # Manual run on the whole repo (e.g. right after installing):
-#   uv run --directory backend pre-commit run --all-files
+#   uv run --directory backend python -m pre_commit run --all-files
+#
+# Every hook is local (`language: system`) and launched through `python -m`: on Windows, the
+# unsigned .exe launchers of pre-commit and of its hooks can be blocked (Smart App Control).
+# `types` restores the file filters that the upstream hook definitions carry.
 
 
 repos:
   # --------------------------------------------------
   # Vérifications générales
   # --------------------------------------------------
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+  - repo: local
     hooks:
       - id: trailing-whitespace
+        name: Trim trailing whitespace
+        entry: uv run --project backend -- python -m pre_commit_hooks.trailing_whitespace_fixer
+        language: system
+        types: [text]
 
       - id: end-of-file-fixer
-        exclude: \.png$
+        name: Fix end of files
+        entry: uv run --project backend -- python -m pre_commit_hooks.end_of_file_fixer
+        language: system
+        types: [text]
 
       - id: check-yaml
+        name: Check YAML
+        entry: uv run --project backend -- python -m pre_commit_hooks.check_yaml
+        language: system
+        types: [yaml]
 
       - id: check-added-large-files
-        args: ["--maxkb=500"]
+        name: Check for added large files
+        entry: uv run --project backend -- python -m pre_commit_hooks.check_added_large_files --maxkb=500
+        language: system
 
       - id: check-merge-conflict
+        name: Check for merge conflicts
+        entry: uv run --project backend -- python -m pre_commit_hooks.check_merge_conflict
+        language: system
+        types: [text]
 
   # --------------------------------------------------
   # Backend : Python (uv)
