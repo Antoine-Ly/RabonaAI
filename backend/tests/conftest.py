@@ -6,6 +6,14 @@ from app.core.config import Settings
 from app.main import create_app
 
 
+@pytest.fixture(autouse=True)
+def isolated_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Les variables d'environnement de la machine (GROQ_API_KEY, APP_ENV…) ne doivent jamais
+    # influencer les tests : une clé présente ferait appeler le vrai Groq depuis `create_app`.
+    for name in Settings.model_fields:
+        monkeypatch.delenv(name.upper(), raising=False)
+
+
 @pytest.fixture
 def settings() -> Settings:
     # `_env_file=None` : les tests ne dépendent jamais d'un `.env` local.
