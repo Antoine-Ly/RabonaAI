@@ -23,3 +23,10 @@ Thumbs.db
 
 # Données de test locales
 samples/
+
+# Résultats locaux de l'évaluation (rapports générés par backend/eval/run_eval.py)
+backend/eval/results/
+
+# Fichiers jetables et métadonnées Windows
+chat-request.json
+desktop.ini
