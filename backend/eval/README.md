@@ -7,4 +7,4 @@ Champs : `id`, `category`, `question`, `expected_tools`, `expected_args` (identi
 lisibles, ex. `ligue-1`), `must_contain`, `must_contain_any`, `must_not_contain`, `expect`
 (`answer` | `decline` | `clarify` | `redirect` | `refuse_injection`), `review` (`auto` | `manual`), `notes`.
 
-Le harnais d'exécution (`run_eval.py`) sera ajouté en phase 2.
+Le harnais d'exécution (`run_eval.py`) est ajouté en phase 2 : il exécute les questions sans outil attendu et hors catégorie `ambiguite` (26 sur 40) ; les 40 le sont à partir de la phase 3. Détail : `docs/conception.md` §7.6.
