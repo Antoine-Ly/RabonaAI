@@ -12,7 +12,7 @@ COMPETITION_SLUGS = {
 
 
 def test_system_prompt_contains_leak_markers() -> None:
-    text = (ROOT / "app/prompts/football_system_prompt.txt").read_text(encoding="utf-8")
+    text = (ROOT / "app/prompts/football_system_prompt.md").read_text(encoding="utf-8")
     for marker in LEAK_MARKERS:
         assert marker in text
 

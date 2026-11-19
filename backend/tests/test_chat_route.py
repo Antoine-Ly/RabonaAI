@@ -80,3 +80,27 @@ def test_without_api_key_chat_returns_internal_error(client: TestClient) -> None
     response = client.post("/chat", json={"message": "Salut"})
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "internal_error"
+
+
+def test_chat_with_a_tool_round_goes_through_cache_and_api(app: FastAPI) -> None:
+    from app.services.llm.base import ToolCall, ToolCallsRequested
+    from tests.test_chat_service import ScriptedLLM
+    from tests.test_football import Api, make_tools
+
+    api = Api()
+    app.state.tools = make_tools(api)
+    app.state.llm = ScriptedLLM(
+        [
+            ToolCallsRequested((ToolCall("c1", "get_standings", '{"competition":"ligue-1"}'),)),
+            Finished("tool_calls", Usage(400, 20)),
+        ],
+        [TextDelta("Le PSG est premier."), Finished("stop", Usage(600, 30))],
+    )
+    response = TestClient(app).post("/chat", json={"message": "Classement de la Ligue 1 ?"})
+    events = parse_sse(response.text)
+    assert [name for name, _ in events] == ["status", "delta", "done"]
+    assert events[0][1] == {"tool": "get_standings", "state": "running"}
+    assert events[2][1]["usage"] == {"prompt_tokens": 1000, "completion_tokens": 50}
+    assert [r.url.path for r in api.requests] == ["/v4/competitions/FL1/standings"]
+    tool_message = app.state.llm.calls[1][1][-1]
+    assert tool_message["content"].startswith("Classement Ligue 1 (France)")
