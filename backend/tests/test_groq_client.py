@@ -7,17 +7,22 @@ import pytest
 
 from app.core.errors import AppError, ErrorCode
 from app.services.llm import groq as groq_module
-from app.services.llm.base import Finished, TextDelta, Usage
+from app.services.llm.base import Finished, TextDelta, ToolCall, ToolCallsRequested, Usage
 from app.services.llm.groq import GroqClient
 
 REQUEST = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
 
 
-def chunk(content=None, finish=None, usage=None, x_error=None):
-    choices = [SimpleNamespace(delta=SimpleNamespace(content=content), finish_reason=finish)]
-    return SimpleNamespace(
-        choices=choices, usage=None, x_groq=SimpleNamespace(usage=usage, error=x_error)
-    )
+def chunk(content=None, finish=None, usage=None, x_error=None, tool_calls=None):
+    delta = SimpleNamespace(content=content, tool_calls=tool_calls)
+    choices = [SimpleNamespace(delta=delta, finish_reason=finish)]
+    x_groq = SimpleNamespace(usage=usage, error=x_error)
+    return SimpleNamespace(choices=choices, usage=None, x_groq=x_groq)
+
+
+def piece(index=0, call_id=None, name=None, arguments=None):
+    function = SimpleNamespace(name=name, arguments=arguments)
+    return SimpleNamespace(index=index, id=call_id, function=function)
 
 
 def counts(prompt=100, completion=40):
@@ -169,3 +174,44 @@ def test_error_reported_inside_the_stream() -> None:
     with pytest.raises(AppError) as info:
         run(client)
     assert info.value.code is ErrorCode.LLM_UNAVAILABLE
+
+
+def run_with_tools(client: GroqClient):
+    async def go():
+        tools = [{"type": "function", "function": {"name": "get_standings"}}]
+        return [e async for e in client.stream("système", [], tools)]
+
+    return asyncio.run(go())
+
+
+def test_tools_are_sent_with_automatic_choice() -> None:
+    client, completions = make_client([FakeStream(GOOD)])
+    run_with_tools(client)
+    call = completions.calls[0]
+    assert call["tools"] == [{"type": "function", "function": {"name": "get_standings"}}]
+    assert call["tool_choice"] == "auto"
+
+
+def test_tool_calls_streamed_in_pieces_are_assembled() -> None:
+    pieces = [
+        chunk(tool_calls=[piece(0, "call_1", "get_standings", '{"compet')]),
+        chunk(tool_calls=[piece(0, None, None, 'ition":"ligue-1"}')]),
+        chunk(tool_calls=[piece(1, "call_2", "get_top_scorers", "{}")]),
+        chunk(finish="tool_calls", usage=counts(300, 20)),
+    ]
+    client, _ = make_client([FakeStream(pieces)])
+    assert run_with_tools(client) == [
+        ToolCallsRequested(
+            (
+                ToolCall("call_1", "get_standings", '{"competition":"ligue-1"}'),
+                ToolCall("call_2", "get_top_scorers", "{}"),
+            )
+        ),
+        Finished("tool_calls", Usage(300, 20)),
+    ]
+
+
+def test_tool_call_without_id_gets_a_generated_one() -> None:
+    pieces = [chunk(tool_calls=[piece(0, None, "get_standings", "{}")]), chunk(finish="tool_calls")]
+    client, _ = make_client([FakeStream(pieces)])
+    assert run_with_tools(client)[0].calls[0].id == "call_0"

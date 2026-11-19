@@ -9,13 +9,14 @@ import logging
 import math
 import time
 from collections.abc import AsyncIterator
+from typing import Any
 
 import groq
 from groq import AsyncGroq
 
 from app.core.config import Settings
 from app.core.errors import AppError, ErrorCode
-from app.services.llm.base import Finished, LLMEvent, TextDelta, Usage
+from app.services.llm.base import Finished, LLMEvent, TextDelta, ToolCall, ToolCallsRequested, Usage
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +49,16 @@ class GroqClient:
                 "Modèle %s absent de la liste Groq : retiré ou mal orthographié ?", self._model
             )
 
-    async def stream(self, system: str, messages: list[dict[str, str]]) -> AsyncIterator[LLMEvent]:
+    async def stream(
+        self,
+        system: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[LLMEvent]:
         for attempt in (1, 2):
             started = False
             try:
-                async for event in self._stream_once(system, messages):
+                async for event in self._stream_once(system, messages, tools):
                     started = True
                     yield event
                 return
@@ -84,18 +90,21 @@ class GroqClient:
                 raise AppError(ErrorCode.INTERNAL_ERROR, MSG_INTERNAL) from exc
 
     async def _stream_once(
-        self, system: str, messages: list[dict[str, str]]
+        self, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None
     ) -> AsyncIterator[LLMEvent]:
+        options: dict[str, Any] = {"tools": tools, "tool_choice": "auto"} if tools else {}
         stream = await self._client.chat.completions.create(
             model=self._model,
             messages=[{"role": "system", "content": system}, *messages],
             stream=True,
             temperature=TEMPERATURE,
             max_completion_tokens=self._max_completion_tokens,
+            **options,
         )
         began = time.monotonic()
         finish_reason: str | None = None
         usage: Usage | None = None
+        calls: dict[int, dict[str, str]] = {}  # appels d'outils reçus par morceaux, par index
         async with stream:
             async for chunk in stream:
                 if time.monotonic() - began > TOTAL_TIMEOUT_S:
@@ -105,6 +114,14 @@ class GroqClient:
                     choice = chunk.choices[0]
                     if choice.delta.content:
                         yield TextDelta(choice.delta.content)
+                    for piece in choice.delta.tool_calls or []:
+                        slot = calls.setdefault(
+                            piece.index, {"id": "", "name": "", "arguments": ""}
+                        )
+                        slot["id"] = piece.id or slot["id"]
+                        if piece.function:
+                            slot["name"] += piece.function.name or ""
+                            slot["arguments"] += piece.function.arguments or ""
                     if choice.finish_reason:
                         finish_reason = choice.finish_reason
                 x_groq = chunk.x_groq
@@ -115,6 +132,13 @@ class GroqClient:
                 counts = chunk.usage or (x_groq.usage if x_groq is not None else None)
                 if counts is not None:
                     usage = Usage(counts.prompt_tokens or 0, counts.completion_tokens or 0)
+        if calls:
+            yield ToolCallsRequested(
+                tuple(
+                    ToolCall(slot["id"] or f"call_{index}", slot["name"], slot["arguments"])
+                    for index, slot in sorted(calls.items())
+                )
+            )
         yield Finished(finish_reason, usage)
 
 
