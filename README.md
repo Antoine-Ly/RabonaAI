@@ -14,7 +14,7 @@ statistiques de joueurs, comparaisons), il répond « Je n'ai pas accès à cett
 | 0 | Cadrage, vérifications (Groq, football-data.org, Supabase, Render) | Terminée |
 | 1 | Squelette du dépôt : backend, frontend, CI, pre-commit, documentation | Terminée |
 | 2 | Chat backend sans outils : `LLMClient` (Groq), prompt temporaire, date du jour, route `/chat` en SSE (un seul tour, sans historique ni base), harnais d'évaluation | Terminée |
-| 3 | Données football : client, cache, limiteur, trois outils, boucle d'appel d'outils, prompt final, évaluation complète | À faire |
+| 3 | Données football : client, cache, limiteur, trois outils, boucle d'appel d'outils, prompt final, évaluation complète | Terminée |
 | 4 | Interface de chat | À faire |
 | 5 | Base de données, authentification, quotas | À faire |
 | 6 | Déploiement (Vercel, Render, Supabase) | À faire |
@@ -40,11 +40,11 @@ rabona-ai/
 │   │   ├── core/                # config (pydantic-settings), format d'erreur
 │   │   ├── routes/              # /health, /chat (SSE) ; les autres routes aux phases 4 et 5
 │   │   ├── schemas/             # modèles Pydantic des requêtes
-│   │   ├── services/            # chat.py (orchestration), llm/ (LLMClient, GroqClient)
+│   │   ├── services/            # chat.py (orchestration), llm/ (Groq), football/ (client, cache, outils)
 │   │   ├── db/                  # emplacement de la phase 5
-│   │   └── prompts/             # prompt final et prompt temporaire de la phase 2
+│   │   └── prompts/             # prompt système
 │   ├── eval/                    # golden_set.jsonl (40 questions), run_eval.py
-│   ├── tests/
+│   ├── tests/                   # dont fixtures/football (réponses réelles réduites)
 │   ├── pyproject.toml  uv.lock  .env.example
 ├── frontend/
 │   ├── src/                     # components, hooks, services, types (contrat d'API), styles
@@ -71,17 +71,17 @@ uv run uvicorn app.main:app --reload --port 8000
 ```
 
 `http://localhost:8000/health` doit répondre `{"status":"ok"}` ; la documentation interactive est
-sur `http://localhost:8000/docs` (désactivée avec `APP_ENV=prod`). Seule `GROQ_API_KEY` est
-nécessaire à ce stade (route `/chat` et évaluation) ; `FOOTBALL_DATA_API_KEY` et `DATABASE_URL`
-servent aux phases 3 et 5.
+sur `http://localhost:8000/docs` (désactivée avec `APP_ENV=prod`). `GROQ_API_KEY` et
+`FOOTBALL_DATA_API_KEY` sont nécessaires à ce stade (route `/chat` et évaluation) ; sans la seconde,
+les outils répondent « données indisponibles ». `DATABASE_URL` sert à la phase 5.
 
-### Tester `/chat` (phase 2)
+### Tester `/chat`
 
 La route est ouverte (sans authentification) et ne garde aucun historique : usage local
 uniquement, à ne pas déployer avant la phase 5.
 
 Le plus simple : `http://localhost:8000/docs` → `POST /chat` → *Try it out*. La réponse est un flux SSE
-(événements `delta`, puis `done` ou `error`) ; Swagger l'affiche d'un bloc, une fois le flux terminé.
+(événements `status` quand une donnée football est consultée, `delta`, puis `done` ou `error`) ; Swagger l'affiche d'un bloc, une fois le flux terminé.
 
 Pour voir le flux arriver au fil de l'eau (utile surtout une fois déployé, pour vérifier qu'aucun proxy
 ne le met en tampon) : sous PowerShell, `curl` est un alias de `Invoke-WebRequest` ; il faut `curl.exe`,
@@ -96,16 +96,16 @@ curl.exe -N -X POST http://localhost:8000/chat -H "Content-Type: application/jso
 Sous bash : `curl -N -X POST http://localhost:8000/chat -H "Content-Type: application/json" -d '{"message": "…"}'`.
 Le fichier `chat-request.json` est jetable : ne pas le versionner.
 
-### Évaluation (phase 2)
+### Évaluation
 
 ```bash
 cd backend
 uv run python -m eval.run_eval --limit 3   # essai rapide
-uv run python -m eval.run_eval             # les 26 questions sans outil
+uv run python -m eval.run_eval             # les 40 questions (vraie API football-data.org)
 ```
 
-Chaque passage consomme le quota Groq de l'organisation (≈ 650 tokens par question en moyenne, mesuré ;
-rythme limité à 6 000 tokens/minute). Options : `--ids`, `--category`, `--limit`, `--repeat`, `--max-tokens`. Le rapport
+Chaque passage consomme le quota Groq de l'organisation (≈ 1 300 tokens par question sans outil,
+≈ 2 900 avec : 40 questions ≈ 71 000 tokens, soit ~35 % du quota journalier ; rythme limité à 6 000 tokens/minute). Options : `--ids`, `--category`, `--limit`, `--repeat`, `--max-tokens`. Le rapport
 (JSON et Markdown, à relire pour les cas manuels) est écrit dans `backend/eval/results/`, ignoré par git.
 Détail : [`docs/conception.md`](docs/conception.md) §7.6.
 

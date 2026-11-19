@@ -1,8 +1,9 @@
-# RabonaAI — Conception v1.1
+# RabonaAI — Conception v1.2
 
-> **Version :** 1.1 — 17 novembre 2026
+> **Version :** 1.2 — 16 novembre 2026
 > **Complète :** `docs/cadrage.md`
 > **Statut :** validée en phase 0 ; `/chat` en version réduite en phase 2, contrat complet validé en phase 5
+> **Changements de la v1.2 :** §1 (règle sur les chiffres), §2.1 à §2.4 (boucle d'outils, formats, cache), §2.3 (prompt final unique), §3.2 (`status`), §7.6 (40 questions, vraie API)
 > **Changements de la v1.1 :** §2.3 (prompt temporaire, date du jour), §3.2 (version de la phase 2), §5.2 (paramètres d'appel V1), §7.2 et §7.6 (format du jeu, harnais)
 
 **Légende :** **(S)** sourcé · **(I)** inféré ou proposé · **(V)** à vérifier. Les valeurs numériques marquées (I) sont des paramètres initiaux à recalibrer après mesure (phase 0).
@@ -11,7 +12,7 @@
 
 ## 1. Matrice de couverture
 
-Règle générale : **aucun chiffre factuel sans résultat d'outil dans le tour courant.** Hors outil, le chatbot peut expliquer, contextualiser et analyser, en signalant le caractère non vérifié.
+Règle générale : **aucune donnée courante (classement, résultat, match à venir, buteur) sans résultat d'outil dans le tour courant.** Pour l'histoire, le chatbot répond **uniquement à la question posée**, sans ajouter d'information non demandée (score, date, lieu, buteurs) ; si l'utilisateur demande le score, il le donne, avec le risque d'erreur du modèle (non vérifié, décision du porteur du projet, ADR 0007). Hors outil, il peut expliquer, contextualiser et analyser.
 
 | # | Type de question | Exemple | Source | Fiabilité | MVP |
 |---|---|---|---|---|---|
@@ -40,7 +41,7 @@ Comportement attendu pour les lignes « Non » (validé) : réponse brève du ty
 
 - Trois outils, définitions courtes et stables (elles sont envoyées à chaque requête : coût en tokens, cache possible).
 - Paramètres contraints par des énumérations, validés côté backend avant tout appel externe.
-- **Un seul tour d'outils** par échange (appel d'outil, puis réponse finale), avec en principe **un seul appel d'outil** : la parallélisation des appels n'est pas garantie selon les modèles (une source secondaire la signale comme non prise en charge par `gpt-oss-120b` ; V) (I).
+- **Un seul tour d'outils** par échange (appel d'outil, puis réponse finale). Si le modèle demande plusieurs appels, ils sont tous exécutés dans la limite de **3** (l'API exige un retour par appel demandé). Le second appel au modèle garde les définitions d'outils, comme en V1 ; une nouvelle demande d'outil à ce stade est ignorée, et une réponse vide devient une erreur `llm_unavailable` (I).
 - Résultats renvoyés en **texte compact** (lignes séparées par des barres verticales), jamais le JSON brut de l'API.
 - Une erreur d'outil est renvoyée au modèle sous forme de phrase courte (« données momentanément indisponibles », « compétition non couverte ») ; le prompt lui impose de le dire à l'utilisateur.
 
@@ -65,13 +66,13 @@ Comportement attendu pour les lignes « Non » (validé) : réponse brève du ty
 
 | Outil | Paramètres | Retour compact (forme) |
 |---|---|---|
-| `get_standings` | `competition` (enum de slugs) | En-tête : nom complet de la compétition, saison, journée, date de récupération. Puis une ligne par équipe : `rang\|équipe\|J\|V\|N\|D\|diff\|pts` (nom court de l'équipe) |
-| `get_matches` | `competition` (enum), `scope` (enum : `recent` \| `upcoming` \| `matchday`), `matchday` (entier, optionnel) | En-tête identique. Puis une ligne par match : `date\|domicile\|score ou -\|extérieur\|statut`. Limité à 10 lignes |
+| `get_standings` | `competition` (enum de slugs) | En-tête : nom de la compétition (avec le pays si deux noms se ressemblent), saison, journée, date de récupération (heure de Paris). Puis une ligne par équipe : `rang\|équipe\|J\|V\|N\|D\|diff\|pts` (nom court de l'équipe) |
+| `get_matches` | `competition` (enum), `scope` (enum : `recent` \| `upcoming` \| `matchday`), `matchday` (entier, optionnel) | En-tête identique (sans journée). Puis une ligne par match : `date\|domicile\|score ou -\|extérieur\|statut`. Date seule pour un match terminé, **date et heure de Paris** pour un match à venir ou en cours. Limité à 10 lignes pour `recent` et `upcoming` (les 10 plus récents ou les 10 plus proches) ; une journée (`matchday`) est donnée en entier (jusqu'à 18 matchs en Ligue des champions) |
 | `get_top_scorers` | `competition` (enum), `limit` (entier 1 à 10, défaut 5) | `rang\|joueur\|équipe\|buts` |
 
 **Implémentation de `get_matches`** (mesures V2, S) :
 
-- `recent` = fenêtre de dates `dateFrom`/`dateTo` de aujourd'hui − 7 jours à aujourd'hui ; `upcoming` = d'aujourd'hui à aujourd'hui + 14 jours (I) ; `matchday` = paramètre `matchday`.
+- `recent` = fenêtre de dates `dateFrom`/`dateTo` de aujourd'hui − 14 jours à aujourd'hui (assez large pour une trêve internationale) ; `upcoming` = d'aujourd'hui à aujourd'hui + 14 jours (I) ; `matchday` = paramètre `matchday`.
 - **Ne jamais** demander « tous les matchs terminés » : 92 à 103 Ko pour une seule compétition, contre 9 à 10 Ko pour une fenêtre de quelques jours.
 - Statuts observés : `FINISHED` et `TIMED` (programmé). Pour `IN_PLAY` / `PAUSED`, afficher « en cours » sans score (pas de score en direct, décision du porteur du projet) ; `POSTPONED` et `CANCELLED` affichés tels quels (I).
 - Fenêtre vide (trêve internationale, par exemple) : retourner **explicitement** « aucun match dans la période » (I). En V1, un retour de `upcoming` ne contenant que des matchs terminés a conduit un modèle à répondre « je n'ai pas pu récupérer les prochains matchs » (S) : le message doit être sans ambiguïté.
@@ -90,9 +91,9 @@ Endpoints confirmés (S, V2) : `/v4/competitions/{code}/standings`, `/matches`, 
 
 ### 2.3. Règles du prompt système v0
 
-Le prompt rédigé à partir de ces règles est dans `backend/app/prompts/football_system_prompt.txt` : c'est le prompt **final**, avec outils.
+Le prompt rédigé à partir de ces règles est dans `backend/app/prompts/football_system_prompt.md` : c'est le prompt **final**, avec outils.
 
-En phase 2, un prompt temporaire sans outils est utilisé : mêmes règles, sans la rubrique « DONNÉES VÉRIFIÉES (OUTILS) », et les classements, résultats et buteurs y sont traités comme non couverts (« Je n'ai pas accès à cette information »). Son texte est relu et validé par le porteur du projet. Après la première évaluation (15/11/2026), il reçoit des consignes de forme (tutoiement, réponses courtes sans tableau), de prudence en tactique (pas de date, de nom ou de durée non sûrs) et de refus de partager les instructions ; elles sont à reprendre dans le prompt final en phase 3.
+Le prompt temporaire sans outils de la phase 2 est supprimé : ses consignes de forme (tutoiement, réponses courtes, pas de tableau sauf pour les données), de prudence en tactique et de refus de partager les instructions sont reprises dans le prompt final, avec la règle sur l'histoire (§1). Son texte est relu et validé par le porteur du projet.
 
 À chaque requête, le backend ajoute à la fin du prompt la ligne « Date du jour : AAAA-MM-JJ » (fuseau Europe/Paris) (I) : la date n'est donc jamais écrite dans le fichier. La journée des quotas reste en UTC (§5.1).
 
@@ -108,11 +109,12 @@ En phase 2, un prompt temporaire sans outils est utilisé : mêmes règles, sans
 
 ### 2.4. Cache et limiteur
 
-- **Cache TTL en mémoire** (clé : outil + paramètres) (I). TTL initiaux : classement 15 min, matchs 10 min, buteurs 60 min. Les scores étant différés (S), un TTL court n'apporte pas de fraîcheur utile.
+- **Cache TTL en mémoire** (clé : outil + paramètres ; pour les matchs, la clé contient aussi le jour) (I). TTL initiaux : classement 15 min, matchs 10 min, buteurs 60 min. Les scores étant différés (S), un TTL court n'apporte pas de fraîcheur utile.
 - **Limiteur global** de type seau à jetons : **8 appels/minute** pour garder une marge sous le plafond de 10 (S) (I).
 - Si le seau est vide : l'outil répond « données momentanément indisponibles » au lieu d'attendre.
 - Le cache est perdu à chaque redémarrage de Render (I) : acceptable en v1. Une table PostgreSQL de cache est une évolution possible.
-- Plusieurs requêtes simultanées pour la même clé : une seule exécution, les autres attendent le résultat (I).
+- Plusieurs requêtes simultanées pour la même clé : une seule exécution, les autres attendent le résultat (I). Une erreur n'est jamais mise en cache.
+- Erreurs de football-data.org (délai de 10 s, 403, 429, 5xx, réponse illisible) : « données momentanément indisponibles », sans nouvel essai ni donnée périmée ; 404 : « compétition non couverte » (I).
 
 ---
 
@@ -177,10 +179,10 @@ Les erreurs détectées **avant** le flux (auth, validation, quota) sont renvoy�
 
 **Côté client :** `fetch` + `ReadableStream`, pas `EventSource` (POST et en-tête `Authorization` impossibles avec `EventSource`) (S, comportement standard du navigateur).
 
-**Version réduite de la phase 2 (I) :**
+**Version réduite jusqu'à la phase 5 (I) :**
 
 - requête limitée à `{ "message": "…" }` : un seul tour, sans historique ni `conversation_id` ;
-- flux limité aux événements `delta`, `done` et `error` : pas de `meta`, `status` ni `quota` (ni base, ni outils, ni quotas) ; `done` contient `finish_reason` et `usage` ;
+- flux limité aux événements `status` (outil en cours : `{"tool", "state": "running"}`), `delta`, `done` et `error` : pas de `meta` ni de `quota` (ni base, ni quotas) ; `done` contient `finish_reason` et `usage` (somme des deux appels au modèle quand un outil est consulté) ;
 - toute erreur Groq, y compris avant le premier fragment, est émise par l'événement `error` ;
 - route non authentifiée : usage local uniquement, à ne pas déployer avant la phase 5.
 
@@ -434,11 +436,12 @@ Comparer `openai/gpt-oss-120b`, `qwen/qwen3.8-27b` et `openai/gpt-oss-20b` (pré
 
 `backend/eval/run_eval.py` appelle directement le service de chat avec le vrai `GroqClient`, sans serveur HTTP (I).
 
-- **Phase 2 (sans outils) :** seules les questions sans outil attendu et hors catégorie `ambiguite` sont exécutées (26 sur 40). Les 14 autres (`out-001` à `out-010`, `inj-002`, `inj-003`, `amb-001`, `amb-002`) attendent la phase 3, où les 40 sont exécutées (constante `TOOLS_AVAILABLE` du harnais).
+- **Questions :** les 40 depuis la phase 3, avec les outils réels et donc la **vraie API football-data.org** (clé requise ; le limiteur de 8 appels/minute et le cache absorbent les questions d'outils). La constante `TOOLS_AVAILABLE = False` rejoue les 26 questions de la phase 2. Les tests automatiques, eux, utilisent des fixtures et ne touchent jamais le réseau.
+- **Contrôles d'outils :** pour chaque question, le harnais enregistre les appels (nom, arguments validés, retour). Il vérifie les outils attendus et inattendus, les arguments attendus (`expected_args`, sous-ensemble) et signale un outil en échec ; les chiffres de la réponse sont comparés aux retours d'outils de la même exécution (heuristique, I).
 - **Options :** `--ids`, `--category`, `--limit`, `--repeat` (1 par défaut), `--max-tokens` (plafond cumulé, 100 000 par défaut). Le rythme reste sous le plafond de 8 000 TPM (V1 : 6 000).
 - **Contrôles automatiques :** outil et arguments attendus (phase 3), `must_contain`, `must_contain_any`, `must_not_contain` (dont les marqueurs de fuite du prompt), phrase de refus pour `decline` (dans la première ligne de la réponse), comparaisons insensibles à la casse, aux apostrophes et aux tirets typographiques (« 3 – 3 » vaut « 3-3 »), taux de chiffres non fondés (nombres absents des retours d'outils et de la question) (I). Pas de LLM juge : les questions `review: manual` sont relues dans un rapport Markdown.
 - **Résultats :** `backend/eval/results/` (ignoré par git). Un résumé chiffré n'est versionné (ADR) que lorsqu'un résultat est figé.
-- **Coût :** phase 2, mesuré (S, rapport du 15/11/2026) : 26 questions = 16 888 tokens (≈ 650 par question, p95 1 109 ; ≈ 8 % du quota journalier), délai avant premier token médian 0,45 s, p95 0,81 s. Phase 3, estimation (I) fondée sur V1 : un passage des 40 questions ≈ 63 000 tokens (≈ 31 % du quota), à remesurer avec le prompt final. Les limites étant celles de l'organisation Groq, les essais de développement consomment le même quota.
+- **Coût :** phase 2, mesuré (S, rapports des 15 et 16/11/2026) : 26 questions = 16 888 tokens (≈ 650 par question, p95 1 109 ; ≈ 8 % du quota journalier), délai avant premier token médian 0,45 s, p95 0,81 s. Phase 3, mesuré (S, rapport du 18/11/2026) : 40 questions = 70 847 tokens (1 306 par question sans outil, 2 856 avec : les définitions des outils sont envoyées à chaque appel ; p95 3 008 ; ≈ 35 % du quota journalier), délai avant premier token médian 0,54 s, p95 1,68 s. Les limites étant celles de l'organisation Groq, les essais de développement consomment le même quota.
 
 ---
 

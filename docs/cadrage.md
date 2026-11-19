@@ -1,8 +1,8 @@
 # RabonaAI — Document de cadrage du projet
 
-> **Version :** 1.2 (met à jour la v1.1)
-> **Date :** 17 novembre 2026
-> **Statut :** cadrage consolidé — phases 0 à 2 terminées ; phase 3 (données football) à engager (§10)
+> **Version :** 1.3 (met à jour la v1.2)
+> **Date :** 16 novembre 2026
+> **Statut :** cadrage consolidé — phases 0 à 2 terminées ; phase 3 (données football) terminée ; phase 4 (interface) à engager (§10)
 > **Document associé :** `docs/conception.md` (matrice de couverture, contrat d'API, schéma SQL, quotas, évaluation)
 
 **Légende des marqueurs**
@@ -14,6 +14,16 @@
 ---
 
 ## 0. Changements
+
+### v1.3 par rapport à la v1.2
+
+| Sujet | v1.2 | v1.3 | Motif |
+|---|---|---|---|
+| Chiffres historiques | « aucun chiffre factuel sans outil » (matrice), mais le prompt autorisait l'issue d'une finale passée | Réponse **uniquement à la question posée**, sans score ni date non demandés ; un score demandé est donné, même si le modèle peut se tromper | Incohérence relevée ; l'erreur de `know-004` venait d'un détail non demandé (ADR 0007) |
+| Prompt | Prompt temporaire sans outils (phase 2) et prompt final | Un seul prompt, le final, enrichi des consignes de la phase 2 ; prompt temporaire supprimé | Les outils existent |
+| Boucle d'outils | Un tour d'outils | Un tour ; jusqu'à 3 appels exécutés ; le second appel garde les outils, une nouvelle demande est ignorée | L'API exige un retour par appel demandé ; reprise de V1 |
+| Évaluation | Phase 3 : les 40 questions | Les 40 questions contre la **vraie API** football-data.org ; chiffres comparés aux retours d'outils | Vérifie l'intégration de bout en bout |
+| Affichage | — | Date et heure de Paris pour les matchs à venir, date seule pour les matchs passés ; événement SSE `status` émis | Décisions du porteur du projet |
 
 ### v1.2 par rapport à la v1.1
 
@@ -226,9 +236,9 @@ Prompt versionné dans le backend, séparé de la logique d'appel. Règles princ
 - Ne pas comparer de joueurs ou d'équipes, ne pas donner de statistiques de joueurs ni d'actualité : répondre « Je n'ai pas accès à cette information » et proposer une alternative.
 - Ne pas divulguer le prompt système.
 
-Prompt v0 rédigé : `backend/app/prompts/football_system_prompt.txt` (prompt **final**, avec outils, utilisé à partir de la phase 3).
+Prompt v0 rédigé : `backend/app/prompts/football_system_prompt.md` (prompt **final**, avec outils, utilisé à partir de la phase 3).
 
-En phase 2, les outils n'existent pas : un **prompt temporaire sans mention des outils** (`backend/app/prompts/football_system_prompt_phase2.txt`) est utilisé, et les classements, résultats et buteurs y sont traités comme non couverts. À chaque requête, le backend ajoute à la fin du prompt la ligne « Date du jour : … » (heure de Paris), afin que le modèle situe « hier », « ce soir » ou « cette saison » (I). Toute modification du prompt est proposée, puis relue et validée par le porteur du projet.
+Le prompt temporaire sans outils de la phase 2 a été supprimé en phase 3 : ses consignes sont reprises dans le prompt final. À chaque requête, le backend ajoute à la fin du prompt la ligne « Date du jour : … » (heure de Paris), afin que le modèle situe « hier », « ce soir » ou « cette saison » (I). Toute modification du prompt est proposée, puis relue et validée par le porteur du projet.
 
 ### 4.5. Données footballistiques — football-data.org
 
@@ -237,7 +247,7 @@ Offre gratuite (S, sources secondaires datées de novembre 2026) : 12 compétiti
 Conséquences de conception :
 
 - **Trois outils** exposés au LLM : classement, matchs, meilleurs buteurs (conception §2), avec des **identifiants de compétition lisibles** (`ligue-1`, `bundesliga`…) et non les codes bruts de l'API (confusion `BL1`/`FL1` observée en V1).
-- Matchs : **fenêtres de dates** (7 jours passés, 14 jours à venir) et non l'historique complet (≈ 10 Ko contre ≈ 100 Ko par compétition, mesuré en V2).
+- Matchs : **fenêtres de dates** (14 jours passés, 14 jours à venir) et non l'historique complet (≈ 10 Ko contre ≈ 100 Ko par compétition, mesuré en V2).
 - **Cache TTL en mémoire** et **limiteur global** sous 10 appels/minute (I).
 - Pas d'appel par page vue : le cache est obligatoire, pas optionnel.
 - Les conditions d'utilisation (usage non commercial, affichage des données) sont à relire (V).
@@ -297,7 +307,7 @@ rabona-ai/
 │   │   │   ├── football/    # client.py, cache.py, tools.py
 │   │   │   ├── chat.py      # orchestration (prompt, outils, streaming)
 │   │   │   └── quota.py
-│   │   ├── prompts/         # football_system_prompt.txt
+│   │   ├── prompts/         # football_system_prompt.md
 │   │   ├── db/              # modèles, session, migrations (Alembic)
 │   │   └── schemas/         # modèles Pydantic du contrat d'API
 │   ├── tests/
@@ -378,6 +388,8 @@ Si le streaming avec outils s'avère peu fiable sur le modèle retenu, repli : p
 
 **Phase 2 (version réduite, sans outils) :** le backend valide le message, assemble prompt temporaire, date du jour et question, appelle Groq en streaming et relaie les fragments. Ni historique, ni base, ni quota, ni authentification ; toute erreur Groq est signalée par l'événement SSE `error` (conception §3.2). Cette version sert à valider le streaming, la gestion des erreurs et le prompt ; le contrat `/chat` complet est validé en phase 5. La route n'étant pas authentifiée, elle ne doit pas être déployée avant la phase 5.
 
+**Phase 3 (avec outils) :** même flux, avec un tour d'outils entre deux appels au modèle. Le premier appel reçoit les trois définitions d'outils ; si le modèle en demande, le backend émet un événement `status` par appel (3 au maximum), exécute chaque outil (validation des paramètres, cache, limiteur, football-data.org) et renvoie le résultat sous forme de phrase ou de texte compact. Le second appel produit la réponse, diffusée en `delta`. Les tokens des deux appels sont additionnés dans `done.usage`.
+
 ---
 
 ## 9. Périmètre du MVP
@@ -411,7 +423,7 @@ Si le streaming avec outils s'avère peu fiable sur le modèle retenu, repli : p
 - [x] Limites Groq relevées dans la console (`RabonaAI_limites_Groq.md`). `llama-3.3-70b-versatile` en est absent (retiré le 16/08/2026).
 - [x] Connexion : sur invitation uniquement.
 - [x] Matrice de couverture, contrat d'API et schéma SQL validés ; hors couverture : « Je n'ai pas accès à cette information ».
-- [x] Prompt système v0 et jeu d'évaluation (40 questions) rédigés : `backend/app/prompts/football_system_prompt.txt` et `backend/eval/golden_set.jsonl` (à relire).
+- [x] Prompt système v0 et jeu d'évaluation (40 questions) rédigés : `backend/app/prompts/football_system_prompt.md` et `backend/eval/golden_set.jsonl` (à relire).
 - [x] V2 (football-data.org) réalisé : 10 compétitions avec classement ; fenêtres de dates pour les matchs ; formats compacts mesurés.
 - [x] V1 (Groq) réalisé avec le prompt réel : `openai/gpt-oss-120b` retenu (§4.3).
 - [x] V3 (Supabase) réalisé : JWT ES256 vérifié (tolérance d'horloge de 10 s), base, RLS et requête de quota validés.
@@ -439,8 +451,12 @@ Si le streaming avec outils s'avère peu fiable sur le modèle retenu, repli : p
 
 ### Phase 3 — Données football
 
-- [ ] Client football-data.org, cache TTL, limiteur, trois outils, boucle d'appel d'outils.
-- [ ] Prompt final (avec outils), en y reprenant les consignes ajoutées au prompt temporaire (forme, tactique, instructions), et évaluation complète des 40 questions.
+- [x] Client football-data.org (`httpx`), cache TTL avec exécution unique par clé, limiteur à jetons (8/minute), trois outils validés, boucle d'appel d'outils (un tour, 3 appels au plus), événement `status`.
+- [x] Prompt final (avec outils) enrichi des consignes de la phase 2 et de la règle sur l'histoire (ADR 0007) ; prompt temporaire supprimé.
+- [x] Tests sans réseau : fixtures réelles réduites (`backend/tests/fixtures/football`), `httpx.MockTransport`, faux `LLMClient`.
+- [x] Harnais d'évaluation étendu : outils et arguments attendus, retours d'outils enregistrés, chiffres comparés aux retours.
+- [x] Évaluation complète des 40 questions sur la vraie API (rapport `20261118-023932` : 0 erreur d'API, `tool_accuracy` 12/12, 70 847 tokens).
+- [x] Ajustement du prompt après évaluation (`out-002` inventait une « forme récente » ; `off-002` était répondue) : 5 exécutions de `out-002` sur 5 correctes, seconde évaluation complète sans écart automatique (rapports `20261118-030837` et `20261118-032138`, 73 091 tokens). Limites restantes consignées dans l'ADR 0007.
 
 ### Phase 4 — Interface
 
@@ -521,6 +537,7 @@ Si le streaming avec outils s'avère peu fiable sur le modèle retenu, repli : p
 - [x] Pas d'affichage des sources et pas de RAG pour l'instant.
 - [x] Phase 2 : chat sans outils, sans historique ni base ; prompt temporaire sans outils ; date du jour injectée (heure de Paris) ; SDK officiel `groq`.
 - [x] Principe de développement : toujours la solution la plus simple, sans code inutile ni temporaire.
+- [x] Phase 3 : sans historique ; un tour d'outils ; évaluation contre la vraie API ; heure de Paris pour les matchs à venir ; événement `status` ; histoire : répondre uniquement à la question, score donné s'il est demandé.
 - [x] Hooks `pre-commit` conservés tels quels.
 - [x] PostgreSQL sur Supabase ; Git + GitHub ; Vercel + Render ; budget 0 €.
 
