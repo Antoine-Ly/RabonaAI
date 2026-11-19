@@ -1,6 +1,7 @@
-"""Orchestration du chat — phase 2 : un seul tour, sans outils, sans historique ni base.
+"""Orchestration du chat : un tour de dialogue, avec au plus un tour d'outils (conception §2.1).
 
-Produit les événements SSE du contrat (conception §3.2) : `delta`, puis `done` ou `error`.
+Phase 3 : sans historique ni base. Produit les événements SSE du contrat (conception §3.2) :
+`status` (outil en cours), `delta`, puis `done` ou `error`.
 """
 
 import logging
@@ -8,18 +9,24 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from functools import cache
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from typing import Any
 
+from app.core.clock import PARIS
 from app.core.errors import AppError, ErrorCode
-from app.services.llm.base import Finished, LLMClient, TextDelta
+from app.services.llm.base import (
+    Finished,
+    LLMClient,
+    TextDelta,
+    ToolCall,
+    ToolCallsRequested,
+    Usage,
+)
+from app.services.toolbox import Toolbox
 
 logger = logging.getLogger(__name__)
 
-# Prompt temporaire sans outils (ADR 0006) ; remplacé par football_system_prompt.txt en phase 3.
-PROMPT_FILE = (
-    Path(__file__).resolve().parent.parent / "prompts" / "football_system_prompt_phase2.txt"
-)
-PARIS = ZoneInfo("Europe/Paris")
+PROMPT_FILE = Path(__file__).resolve().parent.parent / "prompts" / "football_system_prompt.md"
+MAX_TOOL_CALLS = 3  # l'API exige une réponse par appel demandé ; on borne le coût (I)
 
 MSG_EMPTY = "Le service de langage a renvoyé une réponse vide. Réessayez."
 
@@ -45,33 +52,75 @@ def _error_event(exc: AppError) -> SSEEvent:
     }
 
 
+def _assistant_tool_message(text: str, calls: tuple[ToolCall, ...]) -> dict[str, Any]:
+    return {
+        "role": "assistant",
+        "content": text or None,
+        "tool_calls": [
+            {
+                "id": call.id,
+                "type": "function",
+                "function": {"name": call.name, "arguments": call.arguments or "{}"},
+            }
+            for call in calls
+        ],
+    }
+
+
 async def stream_chat(
-    llm: LLMClient, message: str, now: datetime | None = None
+    llm: LLMClient,
+    message: str,
+    toolbox: Toolbox | None = None,
+    now: datetime | None = None,
 ) -> AsyncIterator[SSEEvent]:
     emitted = False
     try:
-        history = [{"role": "user", "content": message}]
-        async for event in llm.stream(build_system_prompt(now), history):
-            if isinstance(event, TextDelta):
-                emitted = True
-                yield "delta", {"text": event.text}
-            elif isinstance(event, Finished):
-                if not emitted:
-                    raise AppError(ErrorCode.LLM_UNAVAILABLE, MSG_EMPTY)
-                usage = event.usage
-                yield (
-                    "done",
-                    {
-                        "finish_reason": event.finish_reason,
-                        "usage": usage
-                        and {
-                            "prompt_tokens": usage.prompt_tokens,
-                            "completion_tokens": usage.completion_tokens,
-                        },
-                    },
-                )
-                return
-        raise AppError(ErrorCode.LLM_UNAVAILABLE, MSG_EMPTY)  # flux terminé sans `Finished`
+        system = build_system_prompt(now)
+        messages: list[dict[str, Any]] = [{"role": "user", "content": message}]
+        definitions = toolbox.definitions if toolbox else None
+        usages: list[Usage] = []
+        finish_reason: str | None = None
+        for round_number in (1, 2):  # 1 : question ; 2 : réponse fondée sur les outils
+            calls: tuple[ToolCall, ...] = ()
+            parts: list[str] = []
+            finished: Finished | None = None
+            async for event in llm.stream(system, messages, definitions):
+                if isinstance(event, TextDelta):
+                    emitted = True
+                    parts.append(event.text)
+                    yield "delta", {"text": event.text}
+                elif isinstance(event, ToolCallsRequested):
+                    calls = event.calls
+                else:
+                    finished = event
+            if finished is None:  # flux terminé sans `Finished`
+                raise AppError(ErrorCode.LLM_UNAVAILABLE, MSG_EMPTY)
+            finish_reason = finished.finish_reason
+            if finished.usage:
+                usages.append(finished.usage)
+            # Un second tour d'outils n'est pas pris en charge : l'éventuelle demande est ignorée.
+            if not calls or toolbox is None or round_number == 2:
+                break
+            calls = calls[:MAX_TOOL_CALLS]
+            messages.append(_assistant_tool_message("".join(parts), calls))
+            for call in calls:
+                yield "status", {"tool": call.name, "state": "running"}
+                result = await toolbox.run(call.name, call.arguments)
+                messages.append({"role": "tool", "tool_call_id": call.id, "content": result.text})
+        if not emitted:
+            raise AppError(ErrorCode.LLM_UNAVAILABLE, MSG_EMPTY)
+        yield (
+            "done",
+            {
+                "finish_reason": finish_reason,
+                "usage": {
+                    "prompt_tokens": sum(u.prompt_tokens for u in usages),
+                    "completion_tokens": sum(u.completion_tokens for u in usages),
+                }
+                if usages
+                else None,
+            },
+        )
     except AppError as exc:
         yield _error_event(exc)
     except Exception:

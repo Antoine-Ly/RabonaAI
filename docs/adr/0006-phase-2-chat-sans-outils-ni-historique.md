@@ -12,7 +12,7 @@
 ## Décision
 
 - Pas d'outils en phase 2, y compris factices : outils et boucle d'outils en phase 3.
-- Prompt **temporaire sans outils** en phase 2 ; le prompt actuel reste le prompt final.
+- Prompt **temporaire sans outils** en phase 2 ; le prompt actuel reste le prompt final (le prompt temporaire est supprimé en phase 3, ADR 0007).
 - `/chat` en version réduite : un seul tour, sans historique (pas de champ temporaire `history`), sans authentification ; événements `delta`, `done`, `error` seulement. Le contrat complet est validé en phase 5.
 - Date du jour (heure de Paris) ajoutée par le backend à chaque requête, jamais écrite dans le fichier de prompt (I).
 - SDK officiel `groq`, avec ses réessais internes désactivés pour garder la gestion des erreurs dans le backend (I).

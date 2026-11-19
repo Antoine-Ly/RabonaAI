@@ -5,8 +5,9 @@ Usage, depuis `backend/` (la clé GROQ_API_KEY est lue dans `.env`) :
     uv run python -m eval.run_eval --category non_couvert
     uv run python -m eval.run_eval --ids know-001,inj-001 --repeat 2
 
-Chaque passage consomme le quota Groq de l'organisation (≈ 650 tokens par question, mesuré) :
-le rythme reste sous le plafond de 8 000 TPM et `--max-tokens` coupe la série au-delà du cumul.
+Chaque passage consomme le quota Groq de l'organisation (≈ 1 300 tokens par question sans outil,
+≈ 2 900 avec, mesurés) : le rythme reste sous le plafond de 8 000 TPM et `--max-tokens` coupe
+la série au-delà du cumul. Les questions avec outils appellent la vraie API football-data.org.
 Les résultats (JSON et rapport Markdown) vont dans `eval/results/` (ignoré par git).
 """
 
@@ -21,21 +22,31 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from app.core.clock import PARIS
 from app.core.config import Settings
-from app.services.chat import PARIS, PROMPT_FILE, stream_chat
+from app.services.chat import PROMPT_FILE, stream_chat
+from app.services.football.tools import (
+    MSG_BAD_ARGS,
+    MSG_NOT_COVERED,
+    MSG_UNAVAILABLE,
+    build_football_tools,
+)
 from app.services.llm.groq import build_groq_client
 
 HERE = Path(__file__).resolve().parent
 GOLDEN_SET = HERE / "golden_set.jsonl"
 RESULTS_DIR = HERE / "results"
 
-# Phase 2 : pas d'outils. Passer à True en phase 3 pour exécuter aussi les 14 questions
-# qui en dépendent (outils attendus, et questions d'ambiguïté qui supposent les outils).
-TOOLS_AVAILABLE = False
+# Phase 3 : les outils existent, les 40 questions sont exécutées (les outils appellent la vraie API
+# football-data.org). Mettre False pour ne rejouer que les 26 questions de la phase 2.
+TOOLS_AVAILABLE = True
+TOOL_ERRORS = {MSG_UNAVAILABLE, MSG_NOT_COVERED, MSG_BAD_ARGS}
+RESULT_LINES_IN_REPORT = 25  # lignes d'un retour d'outil recopiées dans le rapport Markdown
 TPM_BUDGET = 6000  # tokens/minute : marge sous le plafond Groq de 8 000 (V1)
 # Pour ces attentes, aucun chiffre factuel n'est permis hors de la question posée.
 NO_NUMBER_EXPECTS = {"decline", "clarify", "redirect", "refuse_injection"}
 NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
+LEAGUE_NAME = re.compile(r"ligue\s*1\b", re.IGNORECASE)  # le « 1 » de Ligue 1 n'est pas un chiffre
 
 
 def load_questions() -> list[dict]:
@@ -83,12 +94,34 @@ def auto_failures(question: dict, answer: str, error: dict | None) -> list[str]:
     return failures
 
 
-def ungrounded_numbers(question: dict, answer: str) -> list[str]:
-    """Nombres de la réponse absents de la question (heuristique, I)."""
-    if question["expect"] not in NO_NUMBER_EXPECTS:
+def tool_failures(question: dict, tool_calls: list[dict]) -> list[str]:
+    """Outils et arguments attendus ; un outil en échec invalide aussi la mesure."""
+    expected = set(question["expected_tools"])
+    called = [call["name"] for call in tool_calls]
+    failures = [f"outil attendu absent : {name}" for name in sorted(expected - set(called))]
+    failures += [f"outil inattendu : {name}" for name in sorted(set(called) - expected)]
+    first = next((c for c in tool_calls if c["name"] in expected), None)
+    for key, wanted in (question["expected_args"] or {}).items():
+        if first is not None and (first["args"] or {}).get(key) != wanted:
+            got = (first["args"] or {}).get(key)
+            failures.append(f"argument {key} : obtenu {got!r}, attendu {wanted!r}")
+    failures += [
+        f"retour d'outil : {c['result']}" for c in tool_calls if c["result"] in TOOL_ERRORS
+    ]
+    return failures
+
+
+def ungrounded_numbers(
+    question: dict, answer: str, tool_results: list[str] | None = None
+) -> list[str]:
+    """Nombres de la réponse absents des retours d'outils (ou de la question sans outil) (I)."""
+    if tool_results:
+        allowed = set(NUMBER.findall("\n".join(tool_results)))
+    elif question["expect"] in NO_NUMBER_EXPECTS:
+        allowed = set(NUMBER.findall(question["question"]))
+    else:
         return []
-    allowed = set(NUMBER.findall(question["question"]))
-    return sorted(set(NUMBER.findall(answer)) - allowed)
+    return sorted(set(NUMBER.findall(LEAGUE_NAME.sub("", answer))) - allowed)
 
 
 def percentile(values: list[float], p: float) -> float | None:
@@ -98,21 +131,37 @@ def percentile(values: list[float], p: float) -> float | None:
     return ordered[max(0, math.ceil(p * len(ordered)) - 1)]
 
 
-async def ask(llm, question: dict) -> dict:
+class RecordingToolbox:
+    """Enveloppe les outils réels et garde la trace des appels (nom, arguments, retour)."""
+
+    def __init__(self, toolbox) -> None:
+        self._toolbox = toolbox
+        self.definitions = toolbox.definitions
+        self.calls: list[dict] = []
+
+    async def run(self, name: str, arguments: str):
+        result = await self._toolbox.run(name, arguments)
+        self.calls.append({"name": name, "args": result.args, "result": result.text})
+        return result
+
+
+async def ask(llm, toolbox, question: dict) -> dict:
     started = time.perf_counter()
     parts: list[str] = []
     row: dict = {"ttft": None, "usage": None, "finish_reason": None, "error": None}
-    async for name, data in stream_chat(llm, question["question"]):
+    recorder = RecordingToolbox(toolbox)
+    async for name, data in stream_chat(llm, question["question"], recorder):
         if name == "delta":
             if row["ttft"] is None:
                 row["ttft"] = time.perf_counter() - started
             parts.append(data["text"])
         elif name == "done":
             row["usage"], row["finish_reason"] = data["usage"], data["finish_reason"]
-        else:
+        elif name == "error":
             row["error"] = data
     row["answer"] = "".join(parts)
     row["seconds"] = time.perf_counter() - started
+    row["tool_calls"] = recorder.calls
     return row
 
 
@@ -121,7 +170,10 @@ def summarize(rows: list[dict], interrupted: str | None) -> dict:
     ttfts = [r["ttft"] for r in rows if r["ttft"] is not None]
     auto = [r for r in rows if r["review"] == "auto"]
     declines = [r for r in rows if r["expect"] == "decline" and not r["error"]]
-    checked = [r for r in rows if r["expect"] in NO_NUMBER_EXPECTS and not r["error"]]
+    checked = [
+        r for r in rows if (r["expect"] in NO_NUMBER_EXPECTS or r["tool_calls"]) and not r["error"]
+    ]
+    tooled = [r for r in rows if r["expected_tools"]]
     respected = sum(1 for r in declines if not r["failures"] and not r["ungrounded"])
     return {
         "executions": len(rows),
@@ -130,6 +182,7 @@ def summarize(rows: list[dict], interrupted: str | None) -> dict:
         "auto_ok": f"{sum(1 for r in auto if not r['failures'])}/{len(auto)}",
         "to_review_manually": sum(1 for r in rows if r["review"] == "manual"),
         "decline_respected": f"{respected}/{len(declines)}",
+        "tool_accuracy": f"{sum(1 for r in tooled if not r['tool_failures'])}/{len(tooled)}",
         "ungrounded_numbers": f"{sum(1 for r in checked if r['ungrounded'])}/{len(checked)}",
         "total_tokens": sum(tokens),
         "tokens_mean": round(statistics.mean(tokens)) if tokens else None,
@@ -168,8 +221,15 @@ def write_report(stamp: str, meta: dict, summary: dict, rows: list[dict]) -> Pat
             lines += [f"*Attendu : {r['notes']}*", ""]
         if r["failures"]:
             lines += [f"**Écarts :** {' ; '.join(r['failures'])}", ""]
+        for call in r["tool_calls"]:
+            shown = call["result"].splitlines()[:RESULT_LINES_IN_REPORT]
+            lines += [
+                f"**Outil :** `{call['name']}` {json.dumps(call['args'], ensure_ascii=False)}",
+                "",
+            ]
+            lines += ["```text", *shown, "```", ""]
         if r["ungrounded"]:
-            lines += [f"**Chiffres hors question :** {', '.join(r['ungrounded'])}", ""]
+            lines += [f"**Chiffres hors source :** {', '.join(r['ungrounded'])}", ""]
         answer = r["answer"] or f"(aucune réponse : {r['error']})"
         lines += ["> " + line for line in answer.splitlines()] + [""]
         if r["review"] == "manual":
@@ -185,6 +245,11 @@ async def run(args: argparse.Namespace) -> int:
     if llm is None:
         print("GROQ_API_KEY absente : renseigne-la dans backend/.env.")
         return 1
+    football_key = settings.football_data_api_key
+    if TOOLS_AVAILABLE and football_key is None:
+        print("FOOTBALL_DATA_API_KEY absente : renseigne-la dans backend/.env.")
+        return 1
+    toolbox = build_football_tools(football_key.get_secret_value() if football_key else None)
     questions = load_questions()
     if not TOOLS_AVAILABLE:
         questions = [q for q in questions if not requires_tools(q)]
@@ -208,7 +273,7 @@ async def run(args: argparse.Namespace) -> int:
             if total >= args.max_tokens:
                 interrupted = f"plafond --max-tokens atteint ({total} tokens)"
                 break
-            result = await ask(llm, q)
+            result = await ask(llm, toolbox, q)
             usage = result["usage"]
             tokens = usage["prompt_tokens"] + usage["completion_tokens"] if usage else 0
             total += tokens
@@ -217,9 +282,15 @@ async def run(args: argparse.Namespace) -> int:
                 "expect": q["expect"], "review": q["review"], "notes": q["notes"],
                 "answer": result["answer"], "error": result["error"], "tokens": tokens,
                 "ttft": result["ttft"], "finish_reason": result["finish_reason"],
-                "failures": auto_failures(q, result["answer"], result["error"]),
-                "ungrounded": ungrounded_numbers(q, result["answer"]),
+                "expected_tools": q["expected_tools"], "tool_calls": result["tool_calls"],
+                "tool_failures": tool_failures(q, result["tool_calls"]),
+                "ungrounded": ungrounded_numbers(
+                    q, result["answer"], [c["result"] for c in result["tool_calls"]]
+                ),
             }  # fmt: skip
+            row["failures"] = (
+                auto_failures(q, result["answer"], result["error"]) + row["tool_failures"]
+            )
             rows.append(row)
             mark = (
                 "ERREUR"
@@ -239,6 +310,7 @@ async def run(args: argparse.Namespace) -> int:
         if interrupted:
             break
 
+    await toolbox.aclose()
     stamp = datetime.now(PARIS).strftime("%Y%m%d-%H%M%S")
     summary = summarize(rows, interrupted)
     meta = {"model": settings.groq_model, "prompt": PROMPT_FILE.name, "repeat": args.repeat}

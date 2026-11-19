@@ -6,13 +6,15 @@ from eval.run_eval import (
     normalize,
     percentile,
     requires_tools,
+    tool_failures,
     ungrounded_numbers,
 )
 
 
 def question(**overrides) -> dict:
     base = {
-        "question": "Qui a gagné en 2018 ?", "expected_tools": [], "must_contain": [],
+        "question": "Qui a gagné en 2018 ?", "expected_tools": [], "expected_args": {},
+        "must_contain": [],
         "must_contain_any": [], "must_not_contain": [], "expect": "answer", "category": "x",
     }  # fmt: skip
     return base | overrides
@@ -77,7 +79,44 @@ def test_ungrounded_numbers_ignore_the_question_and_free_categories() -> None:
     assert ungrounded_numbers(question(expect="answer"), "En 1998, 3 buts") == []
 
 
+def test_ligue_1_is_a_name_not_a_figure() -> None:
+    q = question(question="Quel est le classement ?", expect="clarify")
+    assert ungrounded_numbers(q, "Quelle compétition ? (Premier League, Ligue 1, Serie A)") == []
+    assert ungrounded_numbers(q, "Ligue 1 : 23 points") == ["23"]
+
+
 def test_percentile_nearest_rank() -> None:
     assert percentile([], 0.95) is None
     assert percentile([5, 1, 3], 0.5) == 3
     assert percentile(list(range(1, 101)), 0.95) == 95
+
+
+def tool_call(name="get_standings", args=None, result="Classement…") -> dict:
+    return {"name": name, "args": args or {"competition": "ligue-1"}, "result": result}
+
+
+def test_tool_failures() -> None:
+    q = question(expected_tools=["get_standings"], expected_args={"competition": "ligue-1"})
+    assert tool_failures(q, [tool_call()]) == []
+    assert tool_failures(q, []) == ["outil attendu absent : get_standings"]
+    assert "outil inattendu : get_matches" in tool_failures(
+        q, [tool_call(), tool_call("get_matches")]
+    )
+    wrong = tool_call(args={"competition": "bundesliga"})
+    assert tool_failures(q, [wrong]) == [
+        "argument competition : obtenu 'bundesliga', attendu 'ligue-1'"
+    ]
+    assert tool_failures(q, [tool_call(result="Données momentanément indisponibles.")]) == [
+        "retour d'outil : Données momentanément indisponibles."
+    ]
+
+
+def test_tool_called_when_none_expected() -> None:
+    assert tool_failures(question(), [tool_call()]) == ["outil inattendu : get_standings"]
+
+
+def test_numbers_are_checked_against_tool_results() -> None:
+    q = question(question="Classement de la Ligue 1 ?", expected_tools=["get_standings"])
+    result = "1|PSG|10|7|2|1|12|23"
+    assert ungrounded_numbers(q, "PSG : 23 points en 10 matchs", [result]) == []
+    assert ungrounded_numbers(q, "PSG : 25 points", [result]) == ["25"]

@@ -1,4 +1,4 @@
-"""`POST /chat` : réponse en flux SSE (conception §3.2). Version réduite de la phase 2 :
+"""`POST /chat` : réponse en flux SSE (conception §3.2). Version réduite jusqu'à la phase 5 :
 un seul tour, sans historique, sans base, sans authentification (usage local uniquement).
 """
 
@@ -36,7 +36,7 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
         logger.error("GROQ_API_KEY absente : /chat indisponible")
         raise AppError(ErrorCode.INTERNAL_ERROR, "Erreur interne du serveur.")
     return StreamingResponse(
-        _sse(stream_chat(llm, message)),
+        _sse(stream_chat(llm, message, request.app.state.tools)),
         media_type="text/event-stream",
         # X-Accel-Buffering : empêche un proxy de mettre le flux en mémoire tampon.
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
