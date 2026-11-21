@@ -48,7 +48,8 @@ export type ChatEvent =
         assistant_message_id: string;
         finish_reason: string;
         usage: { prompt_tokens: number; completion_tokens: number };
-        quota: { messages_remaining_today: number };
+        /** Absent jusqu'à la phase 5 (pas de quotas côté serveur avant la base de données). */
+        quota?: { messages_remaining_today: number };
       };
     }
   | { event: "error"; data: ApiError };
