@@ -15,7 +15,7 @@ statistiques de joueurs, comparaisons), il répond « Je n'ai pas accès à cett
 | 1 | Squelette du dépôt : backend, frontend, CI, pre-commit, documentation | Terminée |
 | 2 | Chat backend sans outils : `LLMClient` (Groq), prompt temporaire, date du jour, route `/chat` en SSE (un seul tour, sans historique ni base), harnais d'évaluation | Terminée |
 | 3 | Données football : client, cache, limiteur, trois outils, boucle d'appel d'outils, prompt final, évaluation complète | Terminée |
-| 4 | Interface de chat | À faire |
+| 4 | Interface de chat : identité visuelle, connexion, chat en streaming (historique en mémoire, sans base) | Terminée (code), à valider en local |
 | 5 | Base de données, authentification, quotas | À faire |
 | 6 | Déploiement (Vercel, Render, Supabase) | À faire |
 
@@ -23,7 +23,7 @@ Feuille de route détaillée : [`docs/cadrage.md`](docs/cadrage.md) §10.
 
 ## Stack
 
-- **Frontend :** React 19, Vite, TypeScript (`frontend/`)
+- **Frontend :** React 19, Vite, TypeScript, `@supabase/supabase-js`, `react-markdown`, police Inter auto-hébergée, tests Vitest (`frontend/`)
 - **Backend :** Python 3.14, FastAPI, Pydantic, géré avec [uv](https://docs.astral.sh/uv/) (`backend/`)
 - **LLM :** Groq, modèle `openai/gpt-oss-120b` (alternative d'urgence : `openai/gpt-oss-20b`)
 - **Données football :** football-data.org (offre gratuite)
@@ -118,7 +118,14 @@ npm install
 npm run dev
 ```
 
-Ouvrir `http://localhost:5173` : la page réveille le backend et affiche son état.
+Ouvrir `http://localhost:5173` : la fenêtre de connexion réveille le backend (état affiché sous le formulaire).
+Il faut renseigner `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` dans `.env.local`, et se connecter avec un
+compte créé dans le tableau de bord Supabase (Authentication → Users → Add user, confirmation automatique ;
+inscriptions libres désactivées).
+
+Jusqu'à la phase 5, l'historique des conversations n'existe que dans le navigateur (perdu au rechargement) et le
+serveur ne reçoit que le dernier message : le modèle n'a pas la mémoire des échanges précédents. Le compteur de
+quota apparaît seulement quand le serveur renvoie `quota` dans l'événement `done` (phase 5).
 
 ## Qualité
 
@@ -133,6 +140,7 @@ uv run pytest
 cd frontend
 npm run lint
 npm run typecheck
+npm run test
 npm run build
 ```
 
