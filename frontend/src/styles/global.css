@@ -10,60 +10,159 @@ html {
 
 body {
   margin: 0;
-  background: var(--color-bg);
+  min-height: 100dvh;
+  background: var(--color-bg) var(--bg-gradient) fixed;
   color: var(--color-text);
   font-family: var(--font-sans);
-  font-size: 1rem;
+  font-size: 0.9375rem;
   line-height: 1.6;
 }
 
 :focus-visible {
   outline: 2px solid var(--color-accent);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 
-.page {
-  max-width: var(--measure);
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--color-surface-2);
+  padding: 0.1em 0.35em;
+  border-radius: 0.3em;
+}
+
+.splash {
   min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  max-width: 32rem;
   margin: 0 auto;
-  padding: var(--space-8) var(--space-6);
-  display: flex;
-  flex-direction: column;
+  text-align: center;
+}
+
+/* Boutons */
+.button {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  gap: var(--space-4);
+  gap: var(--space-2);
+  min-height: 2.75rem;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font-weight: 600;
 }
 
-.page__title {
-  margin: 0;
-  font-size: clamp(2.5rem, 8vw, 4rem);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.05;
-  color: var(--color-accent);
+.button--primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-ink);
 }
 
-.page__lead {
-  margin: 0;
-  font-size: 1.125rem;
+.button--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.button--outline {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
+.button--small {
+  min-height: 2.25rem;
+  padding: 0 var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--color-surface-3);
   color: var(--color-text);
 }
 
+.icon-button--small {
+  width: 2rem;
+  height: 2rem;
+}
+
+.icon-button--danger {
+  color: var(--color-danger);
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.wordmark {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.wordmark__ai {
+  color: var(--color-accent);
+}
+
+.logo-mark {
+  display: block;
+  flex: none;
+}
+
+/* État du serveur (démarrage à froid) */
 .server-status {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--space-3);
-  margin: var(--space-4) 0 0;
+  gap: var(--space-2);
+  margin: 0;
   color: var(--color-text-muted);
-  font-size: 0.9375rem;
+  font-size: 0.8125rem;
 }
 
 .server-status__dot {
   flex: none;
-  width: 0.625rem;
-  height: 0.625rem;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
-  background: var(--color-text-muted);
+  background: var(--color-text-faint);
 }
 
 .server-status[data-status="ready"] .server-status__dot {
@@ -78,21 +177,6 @@ body {
   animation: pulse 1.4s ease-in-out infinite;
 }
 
-.button {
-  font: inherit;
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius);
-  background: var(--color-accent);
-  color: var(--color-accent-ink);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.button:hover {
-  filter: brightness(1.1);
-}
-
 @keyframes pulse {
   50% {
     opacity: 0.25;
@@ -100,7 +184,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .server-status[data-status="waking"] .server-status__dot {
+  .server-status[data-status="waking"] .server-status__dot,
+  .dots i {
     animation: none;
   }
 }
