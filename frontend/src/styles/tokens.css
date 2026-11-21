@@ -1,21 +1,33 @@
 /*
- * Jetons de design (docs/cadrage.md §2) : thème sombre uniquement.
- * Fond noir #000000 et accent vert néon #39ff14 imposés par l'identité du projet.
- * Logo et typographie restent à définir (phase 4) : pile système en attendant.
+ * Jetons de design (docs/cadrage.md §2, ADR 0008) : thème sombre uniquement.
+ * Nuances de noir et de bleu nuit/marine, un seul accent turquoise tiré du logo.
+ * Contrastes vérifiés (WCAG AA) : texte courant sur --surface ≥ 12:1, texte atténué ≥ 7:1.
  */
 :root {
   color-scheme: dark;
 
-  --color-bg: #000000;
-  --color-surface: #101010;
-  --color-border: #2a2a2a;
-  --color-text: #f2f2f2;
-  --color-text-muted: #a3a3a3;
-  --color-accent: #39ff14;
-  --color-accent-ink: #000000;
-  --color-danger: #ff6b6b;
+  --color-bg: #04070d;
+  --color-bg-input: #070e1a;
+  --color-surface: #0a1322;
+  --color-surface-2: #0f1b2e;
+  --color-surface-3: #12233b;
+  --color-border: #1b2a40;
+  --color-border-strong: #2a4163;
+  --color-text: #e8eef6;
+  --color-text-muted: #9fb2cb;
+  --color-text-faint: #8aa0bb;
+  --color-accent: #2dd4a7;
+  --color-accent-text: #7ff0cf;
+  --color-accent-soft: rgba(45, 212, 167, 0.08);
+  --color-accent-ink: #04110d;
+  --color-user: #12304d;
+  --color-user-border: #1f4a73;
+  --color-danger: #ff9b9b;
+  --color-danger-soft: rgba(255, 107, 107, 0.1);
 
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --bg-gradient: radial-gradient(120% 90% at 20% 0%, #0f2a44 0%, #0a1424 45%, #04070d 100%);
+
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -24,6 +36,8 @@
   --space-6: 1.5rem;
   --space-8: 2rem;
 
-  --radius: 0.5rem;
-  --measure: 38rem;
+  --radius: 0.625rem;
+  --radius-lg: 1rem;
+  --measure: 46rem;
+  --sidebar-width: 18rem;
 }
