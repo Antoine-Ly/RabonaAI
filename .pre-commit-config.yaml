@@ -90,6 +90,13 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: frontend-test
+        name: Frontend - Vitest
+        entry: npm --prefix frontend run test
+        language: system
+        pass_filenames: false
+        always_run: true
+
       - id: frontend-build
         name: Frontend - Build
         entry: npm --prefix frontend run build
