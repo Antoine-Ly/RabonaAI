@@ -99,11 +99,11 @@ Détail dans la matrice de couverture (`docs/conception.md`, §1). En résumé :
 
 | Élément | Choix |
 |---|---|
-| Thème | Dark mode |
-| Fond principal | Noir (`#000000`) |
-| Couleur d'accent | Vert néon (`#39FF14`) |
-| Logo | À définir |
-| Typographie | À définir |
+| Thème | Dark mode uniquement |
+| Fond principal | Noirs et bleus nuit (dégradé, `#04070d` à `#0f2a44`) |
+| Couleur d'accent | Turquoise `#2dd4a7` (tiré du logo) |
+| Logo | Symbole « R » (footballeur et ballon), `frontend/src/assets/` et `frontend/public/` |
+| Typographie | Inter (variable, auto-hébergée) |
 
 Le vert reste une couleur d'accent (boutons, liens actifs, indicateurs), pas la couleur des textes courants. Prévoir des surfaces gris très foncé (cartes, bulles) plutôt que du noir pur partout (I).
 
@@ -460,12 +460,15 @@ Si le streaming avec outils s'avère peu fiable sur le modèle retenu, repli : p
 
 ### Phase 4 — Interface
 
-- [ ] Page de chat avec streaming, identité visuelle, états de chargement et d'erreur, responsive.
+- [x] Page de chat avec streaming, identité visuelle, états de chargement et d'erreur, responsive (ADR 0008 ; validée en local par le porteur du projet).
 
 ### Phase 5 — Base de données, authentification, quotas
 
-- [ ] Schéma et migrations, vérification du JWT, persistance, endpoints de conversations, quotas.
-- [ ] Validation du contrat `/chat` complet (historique, événement `meta`, quotas).
+- [x] Migration Alembic idempotente (le schéma de la phase 0 est adopté), vérification du JWT (ES256, JWKS en cache, tolérance d'horloge 10 s), persistance, endpoints de conversations (liste paginée, lecture, renommage, suppression définitive), `GET /me/quota`, quotas (ADR 0009).
+- [x] Contrat `/chat` complet : `conversation_id`, historique de 6 messages, événements `meta` et `done.quota`, enregistrement des réponses partielles.
+- [x] Tests : faux `Store` pour les routes ; `PgStore` et migration contre un vrai PostgreSQL (service de la CI) ; parcours complet vérifié avec le vrai client frontend.
+- [ ] À valider avec le vrai projet Supabase : `alembic upgrade head`, connexion, un échange complet, suppression d'une conversation.
+- [ ] Reporté à la phase 6 ou 7 : limiteur par IP (`slowapi`, conception §5.5) ; purge des conversations inactives (conception §6.3).
 
 ### Phase 6 — Déploiement
 
@@ -546,7 +549,7 @@ Si le streaming avec outils s'avère peu fiable sur le modèle retenu, repli : p
 - [ ] Paramètres de quota : valeurs initiales calibrées sur les tokens mesurés en V1, à ajuster après l'évaluation complète.
 - [ ] Régions : Render et Supabase dans la même zone, de préférence en Europe (la région d'un service Render ne se change pas après création : à décider avant le vrai déploiement).
 - [ ] Politique de conservation et de suppression de l'historique.
-- [ ] Logo, typographie, maquettes, choix des styles.
+- [x] Logo, typographie, maquettes, choix des styles (ADR 0008).
 - [ ] Liste définitive des compétitions exposées (après vérification des endpoints accessibles).
 
 ---
