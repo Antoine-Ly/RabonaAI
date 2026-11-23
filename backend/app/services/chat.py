@@ -1,11 +1,12 @@
 """Orchestration du chat : un tour de dialogue, avec au plus un tour d'outils (conception §2.1).
 
-Phase 3 : sans historique ni base. Produit les événements SSE du contrat (conception §3.2) :
-`status` (outil en cours), `delta`, puis `done` ou `error`.
+Produit les événements SSE propres au modèle (conception §3.2) : `status` (outil en cours), `delta`,
+puis `done` ou `error`. Les événements `meta` et la fin du `done` (quota) sont ajoutés par
+`services/exchange.py`, qui enregistre aussi la réponse.
 """
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import datetime
 from functools import cache
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any
 
 from app.core.clock import PARIS
 from app.core.errors import AppError, ErrorCode
+from app.db.store import HistoryMessage
 from app.services.llm.base import (
     Finished,
     LLMClient,
@@ -72,11 +74,15 @@ async def stream_chat(
     message: str,
     toolbox: Toolbox | None = None,
     now: datetime | None = None,
+    history: Sequence[HistoryMessage] = (),
 ) -> AsyncIterator[SSEEvent]:
     emitted = False
     try:
         system = build_system_prompt(now)
-        messages: list[dict[str, Any]] = [{"role": "user", "content": message}]
+        messages: list[dict[str, Any]] = [
+            *({"role": m.role, "content": m.content} for m in history),
+            {"role": "user", "content": message},
+        ]
         definitions = toolbox.definitions if toolbox else None
         usages: list[Usage] = []
         finish_reason: str | None = None
