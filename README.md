@@ -15,8 +15,8 @@ statistiques de joueurs, comparaisons), il répond « Je n'ai pas accès à cett
 | 1 | Squelette du dépôt : backend, frontend, CI, pre-commit, documentation | Terminée |
 | 2 | Chat backend sans outils : `LLMClient` (Groq), prompt temporaire, date du jour, route `/chat` en SSE (un seul tour, sans historique ni base), harnais d'évaluation | Terminée |
 | 3 | Données football : client, cache, limiteur, trois outils, boucle d'appel d'outils, prompt final, évaluation complète | Terminée |
-| 4 | Interface de chat : identité visuelle, connexion, chat en streaming (historique en mémoire, sans base) | Terminée (code), à valider en local |
-| 5 | Base de données, authentification, quotas | À faire |
+| 4 | Interface de chat : identité visuelle, connexion, chat en streaming | Terminée |
+| 5 | Base de données, authentification (JWT Supabase), historique, quotas | Terminée |
 | 6 | Déploiement (Vercel, Render, Supabase) | À faire |
 
 Feuille de route détaillée : [`docs/cadrage.md`](docs/cadrage.md) §10.
@@ -67,21 +67,29 @@ rabona-ai/
 cd backend
 cp .env.example .env        # PowerShell : Copy-Item .env.example .env
 uv sync
+uv run alembic upgrade head     # crée (ou adopte) le schéma dans la base de DATABASE_URL
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
 `http://localhost:8000/health` doit répondre `{"status":"ok"}` ; la documentation interactive est
 sur `http://localhost:8000/docs` (désactivée avec `APP_ENV=prod`). `GROQ_API_KEY` et
 `FOOTBALL_DATA_API_KEY` sont nécessaires à ce stade (route `/chat` et évaluation) ; sans la seconde,
-les outils répondent « données indisponibles ». `DATABASE_URL` sert à la phase 5.
+les outils répondent « données indisponibles ». `DATABASE_URL` (chaîne « Session pooler » de Supabase) et
+`SUPABASE_URL` sont nécessaires aux routes protégées. La migration est idempotente : le schéma de la phase 0
+(`schema.sql`) est adopté tel quel.
 
 ### Tester `/chat`
 
-La route est ouverte (sans authentification) et ne garde aucun historique : usage local
-uniquement, à ne pas déployer avant la phase 5.
+Toutes les routes sauf `/health` exigent un jeton Supabase (`Authorization: Bearer …`). Pour en obtenir un :
 
-Le plus simple : `http://localhost:8000/docs` → `POST /chat` → *Try it out*. La réponse est un flux SSE
-(événements `status` quand une donnée football est consultée, `delta`, puis `done` ou `error`) ; Swagger l'affiche d'un bloc, une fois le flux terminé.
+```bash
+curl -s -X POST "$SUPABASE_URL/auth/v1/token?grant_type=password" \
+  -H "apikey: $SUPABASE_ANON_KEY" -H "Content-Type: application/json" \
+  -d '{"email":"toi@exemple.com","password":"..."}'    # champ access_token (valable ~1 h)
+```
+
+Puis `http://localhost:8000/docs` → *Authorize* (coller le jeton) → `POST /chat` → *Try it out*. La réponse est un flux SSE
+(événements `meta`, `status` quand une donnée football est consultée, `delta`, puis `done` ou `error`) ; Swagger l'affiche d'un bloc, une fois le flux terminé.
 
 Pour voir le flux arriver au fil de l'eau (utile surtout une fois déployé, pour vérifier qu'aucun proxy
 ne le met en tampon) : sous PowerShell, `curl` est un alias de `Invoke-WebRequest` ; il faut `curl.exe`,
@@ -123,9 +131,8 @@ Il faut renseigner `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` dans `.env.lo
 compte créé dans le tableau de bord Supabase (Authentication → Users → Add user, confirmation automatique ;
 inscriptions libres désactivées).
 
-Jusqu'à la phase 5, l'historique des conversations n'existe que dans le navigateur (perdu au rechargement) et le
-serveur ne reçoit que le dernier message : le modèle n'a pas la mémoire des échanges précédents. Le compteur de
-quota apparaît seulement quand le serveur renvoie `quota` dans l'événement `done` (phase 5).
+Les conversations, leur historique et le compteur de quota viennent du serveur (phase 5) : le modèle reçoit les
+6 derniers messages de la conversation (`HISTORY_MAX_MESSAGES`).
 
 ## Qualité
 
@@ -134,7 +141,7 @@ quota apparaît seulement quand le serveur renvoie `quota` dans l'événement `d
 cd backend
 uv run ruff check .
 uv run ruff format --check .
-uv run pytest
+uv run pytest                # les tests de PgStore sont ignorés sans TEST_DATABASE_URL
 
 # frontend
 cd frontend
@@ -172,7 +179,7 @@ refuse de démarrer si une variable obligatoire manque.
 
 Le palier gratuit de Groq limite l'application à environ **80 échanges par jour** et trois échanges
 avec outil par minute (mesures de la phase 0). C'est pourquoi l'accès se fait **sur invitation** et
-que des plafonds par utilisateur et globaux sont prévus (phase 5).
+que des plafonds par utilisateur (10 messages par jour) et globaux (170 000 tokens par jour) s'appliquent.
 
 ## Documentation
 
@@ -184,4 +191,7 @@ que des plafonds par utilisateur et globaux sont prévus (phase 5).
 
 - `npm audit` signale 10 alertes modérées, toutes dans l'outillage de développement (ESLint,
   `minimatch`) ; aucune dans les dépendances de production. À revoir lors des mises à jour d'ESLint.
-- Le schéma SQL de référence est dans `docs/conception.md` §6 ; les migrations Alembic arrivent en phase 5.
+- Le schéma SQL de référence est dans `docs/conception.md` §6 ; il est géré par Alembic (`backend/migrations/`).
+- Tests d'intégration de la base : `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/rabona_test`
+  (base jetable dont le nom finit par `_test`, **jamais** Supabase : le schéma `auth` et les tables y sont recréés).
+  En CI, un service PostgreSQL fournit cette variable.

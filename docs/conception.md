@@ -130,6 +130,7 @@ Base : `https://<backend>/` — format JSON, encodage UTF-8. Authentification : 
 | `POST` | `/chat` | Envoyer un message, recevoir la réponse en SSE | 200 `text/event-stream` |
 | `GET` | `/conversations` | Lister les conversations de l'utilisateur | 200 |
 | `GET` | `/conversations/{id}` | Lire une conversation et ses messages | 200 |
+| `PATCH` | `/conversations/{id}` | Renommer une conversation (`{ "title" }`, 1 à 120 caractères) | 200 |
 | `DELETE` | `/conversations/{id}` | Supprimer une conversation (messages inclus) | 204 |
 | `GET` | `/me/quota` | État du quota de l'utilisateur | 200 |
 
@@ -246,7 +247,7 @@ Quotas Groq gratuits relevés dans la console du porteur du projet (`RabonaAI_li
 |---|---|
 | Prompt système | ≤ 500 |
 | Définitions des 3 outils | ≤ 300 |
-| Historique (4 derniers messages) | ≤ 800 |
+| Historique (6 derniers messages) | ≤ 1 200 |
 | Message utilisateur | ≤ 500 (2000 caractères maximum) |
 | Résultat d'outil (compact) | ≤ 500 |
 | Raisonnement + réponse (`max_completion_tokens`) | ≤ 1 500 |
@@ -262,15 +263,15 @@ Quotas Groq gratuits relevés dans la console du porteur du projet (`RabonaAI_li
 | `USER_DAILY_MESSAGES` | 10 | Messages par utilisateur et par jour |
 | `GLOBAL_DAILY_TOKENS` | 170 000 | Budget global (≈ 85 % du plafond de 200 000, marge de sécurité) |
 | `MAX_MESSAGE_CHARS` | 2000 | Longueur maximale d'un message |
-| `HISTORY_MAX_MESSAGES` | 4 | Fenêtre d'historique envoyée au modèle |
+| `HISTORY_MAX_MESSAGES` | 6 | Fenêtre d'historique envoyée au modèle |
 | `MAX_COMPLETION_TOKENS` | 1500 | Plafond raisonnement + réponse |
 
 Accès **sur invitation uniquement** (décision prise) : le nombre d'utilisateurs reste maîtrisé, ce qui rend ces plafonds suffisants.
 
 ### 5.4. Mécanique
 
-1. **Avant tout appel externe** : réservation atomique d'un message pour l'utilisateur (SQL §6.2). Aucune ligne retournée : `quota_user_daily`.
-2. Lecture de la somme des tokens du jour. Supérieure ou égale à `GLOBAL_DAILY_TOKENS` : `quota_global_daily`.
+1. **Avant tout appel externe**, dans une seule transaction : conversation (404 si inexistante ou d'un autre utilisateur, sans consommer de quota), puis budget global (somme des tokens du jour supérieure ou égale à `GLOBAL_DAILY_TOKENS` : `quota_global_daily`), puis réservation atomique d'un message pour l'utilisateur (SQL §6.2 ; aucune ligne retournée : `quota_user_daily`). Le budget global est vérifié **avant** la réservation, pour qu'un service saturé ne consomme pas le message de l'utilisateur.
+2. La réponse n'est enregistrée qu'à la fin du flux (`complete`) ; un flux interrompu (erreur du modèle, bouton Stop, onglet fermé) est enregistré avec le statut `partial`, sans réponse vide.
 3. Après la réponse : ajout des tokens consommés (champ `usage` renvoyé par Groq ; en streaming, présence dans le dernier fragment : V ; sinon estimation à partir du nombre de caractères) (I).
 4. Un message réservé n'est pas remboursé en cas d'échec : simplicité (I).
 5. Le limiteur par IP (`slowapi`) protège `/chat` contre les rafales ; il ne remplace pas les plafonds ci-dessus.

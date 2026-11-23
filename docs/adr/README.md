@@ -13,3 +13,5 @@ elles sont déduites).
 | [0005](0005-hebergement-regions-demarrage-a-froid.md) | Hébergement, régions et démarrage à froid |
 | [0006](0006-phase-2-chat-sans-outils-ni-historique.md) | Phase 2 : chat sans outils, sans historique ni base |
 | [0007](0007-phase-3-outils-boucle-et-chiffres-historiques.md) | Phase 3 : boucle d'outils, évaluation sur la vraie API, chiffres historiques |
+| [0008](0008-phase-4-interface.md) | Phase 4 : interface de chat |
+| [0009](0009-phase-5-base-authentification-quotas.md) | Phase 5 : base de données, authentification, historique et quotas |

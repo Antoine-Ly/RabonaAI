@@ -2,8 +2,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.core.auth import current_user
 from app.core.config import Settings
 from app.main import create_app
+from tests.fakes import USER, FakeStore
 
 
 @pytest.fixture(autouse=True)
@@ -29,3 +31,12 @@ def app(settings: Settings) -> FastAPI:
 def client(app: FastAPI) -> TestClient:
     # raise_server_exceptions=False : on teste la réponse 500, pas la propagation de l'exception.
     return TestClient(app, raise_server_exceptions=False)
+
+
+@pytest.fixture
+def store(app: FastAPI) -> FakeStore:
+    """Faux store branché sur l'application, avec l'utilisateur `USER` déjà authentifié."""
+    fake = FakeStore()
+    app.state.store = fake
+    app.dependency_overrides[current_user] = lambda: USER
+    return fake

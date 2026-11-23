@@ -19,12 +19,12 @@ interface Props {
 const DESKTOP = "(min-width: 801px)";
 
 export function ChatPage({ email, getToken, onSignOut }: Props) {
-  const { state, dispatch, send, stop } = useChat(getToken, onSignOut);
+  const { state, dispatch, send, stop, rename, remove, loadMore } = useChat(getToken, onSignOut);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.matchMedia(DESKTOP).matches);
 
   const active = state.conversations.find((c) => c.id === state.activeId);
   const streaming = state.streamingId !== null;
-  const blocked = state.quota?.remaining === 0;
+  const blocked = state.quota?.remaining === 0 || state.quota?.available === false;
 
   // Sur mobile, la barre latérale est un tiroir : on la ferme après un choix.
   const closeIfDrawer = () => {
@@ -55,11 +55,11 @@ export function ChatPage({ email, getToken, onSignOut }: Props) {
           dispatch({ type: "select", id });
           closeIfDrawer();
         }}
-        onRename={(id, title) => dispatch({ type: "rename", id, title })}
-        onRemove={(id) => {
-          if (id === state.streamingId) stop();
-          dispatch({ type: "remove", id });
-        }}
+        onRename={(id, title) => void rename(id, title)}
+        onRemove={(id) => void remove(id)}
+        loaded={state.listLoaded}
+        hasMore={state.nextCursor !== null}
+        onLoadMore={() => state.nextCursor && void loadMore(state.nextCursor)}
       />
 
       <main className="main">
@@ -88,8 +88,12 @@ export function ChatPage({ email, getToken, onSignOut }: Props) {
           </div>
         </header>
 
-        {active ? (
+        {active?.messages ? (
           <MessageList messages={active.messages} toolStatus={state.toolStatus} slow={state.slow} />
+        ) : active ? (
+          <div className="messages" aria-busy="true">
+            <p className="pending">Chargement de la conversation…</p>
+          </div>
         ) : (
           <div className="messages">
             <Welcome disabled={streaming || blocked} onPick={(text) => void send(text)} />

@@ -12,9 +12,25 @@ interface Props {
   onSelect: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onRemove: (id: string) => void;
+  /** Liste lue depuis le serveur. */
+  loaded: boolean;
+  hasMore: boolean;
+  onLoadMore: () => void;
 }
 
-export function Sidebar({ conversations, activeId, open, onClose, onNew, onSelect, onRename, onRemove }: Props) {
+export function Sidebar({
+  conversations,
+  activeId,
+  open,
+  onClose,
+  onNew,
+  onSelect,
+  onRename,
+  onRemove,
+  loaded,
+  hasMore,
+  onLoadMore,
+}: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
@@ -55,7 +71,7 @@ export function Sidebar({ conversations, activeId, open, onClose, onNew, onSelec
 
         <h2 className="sidebar__title">Historique</h2>
         {conversations.length === 0 ? (
-          <p className="sidebar__empty">Tes conversations apparaîtront ici.</p>
+          <p className="sidebar__empty">{loaded ? "Tes conversations apparaîtront ici." : "Chargement…"}</p>
         ) : (
           <ul className="history">
             {conversations.map((c) => (
@@ -126,6 +142,11 @@ export function Sidebar({ conversations, activeId, open, onClose, onNew, onSelec
               </li>
             ))}
           </ul>
+        )}
+        {hasMore && (
+          <button type="button" className="button button--small" onClick={onLoadMore}>
+            Afficher plus
+          </button>
         )}
       </aside>
     </>

@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     user_daily_messages: int = Field(default=10, ge=1)
     global_daily_tokens: int = Field(default=170_000, ge=1_000)
     max_message_chars: int = Field(default=2_000, ge=1)
-    history_max_messages: int = Field(default=4, ge=0)
+    history_max_messages: int = Field(default=6, ge=0)
     max_completion_tokens: int = Field(default=1_500, ge=100)
 
     @model_validator(mode="after")

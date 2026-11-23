@@ -45,7 +45,7 @@ export function Composer({ streaming, blocked, onSend, onStop }: Props) {
           rows={1}
           maxLength={MAX_MESSAGE_CHARS}
           value={value}
-          placeholder={blocked ? "Limite de messages atteinte pour aujourd'hui" : "Pose ta question sur le football…"}
+          placeholder={blocked ? "Plus de messages disponibles aujourd'hui" : "Pose ta question sur le football…"}
           aria-label="Ton message"
           disabled={blocked}
           onChange={(e) => setValue(e.target.value)}
