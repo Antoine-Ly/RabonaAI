@@ -12,14 +12,21 @@ export function QuotaBadge({ quota }: { quota: QuotaInfo | null }) {
   const countdown = formatDuration((reset.getTime() - now.getTime()) / 1000);
   const count = quota.limit === null ? `${quota.remaining}` : `${quota.remaining} / ${quota.limit}`;
   const label = quota.limit === null ? "restants aujourd'hui" : "messages aujourd'hui";
+  const saturated = !quota.available;
   return (
     <p
       className="quota"
-      data-empty={quota.remaining === 0}
+      data-empty={quota.remaining === 0 || saturated}
       title={`Réinitialisation à ${timeFormat.format(reset)} (heure locale)`}
     >
       <span>
-        <b>{count}</b> {label}
+        {saturated ? (
+          <b>Service saturé</b>
+        ) : (
+          <>
+            <b>{count}</b> {label}
+          </>
+        )}
       </span>
       <span className="quota__sep" aria-hidden="true">
         ·
