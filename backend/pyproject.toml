@@ -4,11 +4,15 @@ description = "API FastAPI de RabonaAI"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
+    "alembic>=1.18",
     "cachetools>=8.0.0",
     "fastapi>=0.162.5",
     "groq>=1.7.0",
     "httpx>=0.28.1",
+    "psycopg[binary]>=3.3",
     "pydantic-settings>=2.16.2",
+    "pyjwt[crypto]>=2.12",
+    "sqlalchemy[asyncio]>=2.1",
     "tzdata>=2026.6",
     "uvicorn>=0.54.0",
 ]
