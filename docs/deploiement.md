@@ -6,6 +6,7 @@ Frontend sur **Vercel** (Hobby), backend sur **Render** (Web Service gratuit), b
 
 - Le code est poussé sur la branche `main` de GitHub et la CI est verte.
 - La migration est appliquée sur Supabase : `cd backend && uv run alembic current` doit afficher `0001 (head)`.
+- La migration `0002` est appliquée (RLS sur la table de version d'Alembic) : Supabase → **Advisors → Security Advisor** ne doit plus signaler d'erreur « RLS Disabled in Public ». Les avis « RLS enabled, no policy » sur `conversations`, `messages` et `usage_daily` sont **voulus** (aucun accès par l'API publique ; le backend se connecte directement) (I).
 - Les inscriptions libres sont désactivées sur Supabase (Authentication → Sign In / Providers, « Allow new users to sign up ») (V). Elles l'étaient depuis la phase 0 ; à re-vérifier : la clé publique permet sinon à n'importe qui de créer un compte.
 - Conseillé : créer une **clé Groq distincte pour la production** (révocable sans toucher à ton environnement local).
 
