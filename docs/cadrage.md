@@ -472,7 +472,8 @@ Si le streaming avec outils s'avère peu fiable sur le modèle retenu, repli : p
 
 ### Phase 6 — Déploiement
 
-- [ ] Vercel, Render, variables d'environnement, CORS, test depuis une URL publique, comportement après mise en veille, ping Supabase.
+- [x] Préparés (ADR 0010) : `render.yaml`, `frontend/vercel.json`, route `/health/db`, workflow *Ping Supabase*, guide `docs/deploiement.md`.
+- [ ] À faire par le porteur du projet : création des services Render et Vercel, variables d'environnement, `FRONTEND_URL`, variable `BACKEND_URL`, test de recette depuis l'URL publique (dont le comportement après mise en veille).
 
 ### Phase 7 — Améliorations
 
@@ -547,7 +548,7 @@ Si le streaming avec outils s'avère peu fiable sur le modèle retenu, repli : p
 ### Points restants
 
 - [ ] Paramètres de quota : valeurs initiales calibrées sur les tokens mesurés en V1, à ajuster après l'évaluation complète.
-- [ ] Régions : Render et Supabase dans la même zone, de préférence en Europe (la région d'un service Render ne se change pas après création : à décider avant le vrai déploiement).
+- [ ] Régions (`frankfurt` prévu dans `render.yaml`, à confirmer avant la création) : Render et Supabase dans la même zone, de préférence en Europe (la région d'un service Render ne se change pas après création : à décider avant le vrai déploiement).
 - [ ] Politique de conservation et de suppression de l'historique.
 - [x] Logo, typographie, maquettes, choix des styles (ADR 0008).
 - [ ] Liste définitive des compétitions exposées (après vérification des endpoints accessibles).

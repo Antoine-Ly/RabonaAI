@@ -15,3 +15,4 @@ elles sont déduites).
 | [0007](0007-phase-3-outils-boucle-et-chiffres-historiques.md) | Phase 3 : boucle d'outils, évaluation sur la vraie API, chiffres historiques |
 | [0008](0008-phase-4-interface.md) | Phase 4 : interface de chat |
 | [0009](0009-phase-5-base-authentification-quotas.md) | Phase 5 : base de données, authentification, historique et quotas |
+| [0010](0010-phase-6-deploiement.md) | Phase 6 : déploiement (Render, Vercel, ping Supabase) |
