@@ -1,0 +1,24 @@
+name: Ping Supabase
+
+# Les projets Supabase gratuits sont mis en pause après une semaine d'inactivité (cadrage §4.4).
+# Ce ping traverse le backend jusqu'à PostgreSQL ; il sert aussi de test de déploiement.
+# À activer en créant la variable de dépôt BACKEND_URL (Settings → Secrets and variables → Actions → Variables).
+on:
+  schedule:
+    - cron: "17 6 */3 * *" # tous les 3 jours environ
+  workflow_dispatch:
+
+jobs:
+  ping:
+    if: ${{ vars.BACKEND_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Le backend gratuit peut mettre ≈ 30 s à se réveiller : délai généreux et nouvelles tentatives.
+      - name: Appeler /health/db
+        env:
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+        run: >
+          curl --fail --silent --show-error --max-time 120
+          --retry 3 --retry-delay 20 --retry-all-errors
+          "$BACKEND_URL/health/db"
