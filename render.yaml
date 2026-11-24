@@ -1,0 +1,34 @@
+# Blueprint Render : backend FastAPI (conception §7, ADR 0010).
+# Création : Render → New → Blueprint → dépôt GitHub. Les variables « sync: false » sont saisies
+# dans le tableau de bord (jamais dans Git).
+services:
+  - type: web
+    name: rabona-backend
+    runtime: python
+    plan: free
+    region: frankfurt # ne peut plus être modifiée après la création (à aligner sur la région Supabase)
+    branch: main
+    rootDir: backend
+    # `uv.lock` est présent : Render fournit uv. `--locked` échoue si le verrou est périmé.
+    buildCommand: uv sync --locked --no-dev
+    # Alembic n'est pas lancé au démarrage : la migration se fait à la main (docs/deploiement.md).
+    startCommand: uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass # redéploie seulement si la CI GitHub est verte
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.14"
+      - key: APP_ENV
+        value: prod
+      - key: LOG_LEVEL
+        value: INFO
+      - key: FRONTEND_URL # URL Vercel exacte, en https, sans « / » final
+        sync: false
+      - key: SUPABASE_URL # https://<réf>.supabase.co
+        sync: false
+      - key: DATABASE_URL # chaîne « Session pooler » de Supabase
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: FOOTBALL_DATA_API_KEY
+        sync: false

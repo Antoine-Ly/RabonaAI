@@ -71,3 +71,8 @@ def test_leeway_bounds(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
     monkeypatch.setenv("JWT_LEEWAY_SECONDS", value)
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_frontend_url_is_normalized_for_cors() -> None:
+    settings = Settings(_env_file=None, frontend_url=" https://rabona.example/ ")
+    assert settings.frontend_url == "https://rabona.example"

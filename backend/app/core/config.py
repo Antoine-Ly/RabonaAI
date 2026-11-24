@@ -7,7 +7,7 @@ sans clé. En production (`APP_ENV=prod`), les variables indispensables sont exi
 from functools import lru_cache
 from typing import Literal, Self
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     max_message_chars: int = Field(default=2_000, ge=1)
     history_max_messages: int = Field(default=6, ge=0)
     max_completion_tokens: int = Field(default=1_500, ge=100)
+
+    @field_validator("frontend_url")
+    @classmethod
+    def _strip_trailing_slash(cls, value: str) -> str:
+        # Une origine CORS n'a pas de « / » final : sinon le navigateur refuse toute requête.
+        return value.strip().rstrip("/")
 
     @model_validator(mode="after")
     def _require_secrets_in_prod(self) -> Self:

@@ -17,7 +17,7 @@ statistiques de joueurs, comparaisons), il répond « Je n'ai pas accès à cett
 | 3 | Données football : client, cache, limiteur, trois outils, boucle d'appel d'outils, prompt final, évaluation complète | Terminée |
 | 4 | Interface de chat : identité visuelle, connexion, chat en streaming | Terminée |
 | 5 | Base de données, authentification (JWT Supabase), historique, quotas | Terminée |
-| 6 | Déploiement (Vercel, Render, Supabase) | À faire |
+| 6 | Déploiement (Vercel, Render, Supabase) : configuration prête, guide dans [`docs/deploiement.md`](docs/deploiement.md) | Terminée |
 
 Feuille de route détaillée : [`docs/cadrage.md`](docs/cadrage.md) §10.
 

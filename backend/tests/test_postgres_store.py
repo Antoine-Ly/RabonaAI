@@ -266,3 +266,13 @@ def test_long_title_is_rejected_by_the_database_constraint() -> None:
             await store.rename_conversation(USER, exchange.conversation_id, "x" * 121)
 
     run(scenario)
+
+
+def test_health_db_reaches_the_database() -> None:
+    from fastapi.testclient import TestClient
+
+    from app.core.config import Settings
+    from app.main import create_app
+
+    with TestClient(create_app(Settings(_env_file=None, database_url=URL))) as client:
+        assert client.get("/health/db").json() == {"status": "ok"}
