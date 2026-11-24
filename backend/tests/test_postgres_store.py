@@ -276,3 +276,26 @@ def test_health_db_reaches_the_database() -> None:
 
     with TestClient(create_app(Settings(_env_file=None, database_url=URL))) as client:
         assert client.get("/health/db").json() == {"status": "ok"}
+
+
+def test_every_public_table_has_row_level_security() -> None:
+    """Garde-fou : une table de `public` sans RLS serait lisible avec la clé publique Supabase."""
+    engine = create_engine(sync_url())
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                """
+                select c.relname, c.relrowsecurity from pg_class c
+                join pg_namespace n on n.oid = c.relnamespace
+                where n.nspname = 'public' and c.relkind in ('r', 'p')
+                """
+            )
+        ).all()
+    engine.dispose()
+    assert {r.relname for r in rows} >= {
+        "alembic_version",
+        "conversations",
+        "messages",
+        "usage_daily",
+    }
+    assert [r.relname for r in rows if not r.relrowsecurity] == []

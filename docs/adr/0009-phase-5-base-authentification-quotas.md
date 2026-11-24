@@ -24,3 +24,4 @@ La phase 3 laissait `/chat` ouvert, sans historique ni base. La phase 0 avait va
 - Écarts d'estimation à surveiller : avec 6 messages d'historique au lieu de 4, le coût moyen par échange augmente d'environ 400 tokens (I) ; à confirmer sur l'usage réel avant de modifier `GLOBAL_DAILY_TOKENS`.
 - Non traités : limiteur par IP (`slowapi`) et purge des conversations inactives (phases 6 et 7).
 - À valider avec le vrai projet Supabase : migration, connexion JWKS réelle (le jeton ES256 est vérifié ici avec une clé locale), échange complet.
+- **Correctif du 23/11/2026** : la table `public.alembic_version`, créée par Alembic lui-même, était lisible et modifiable avec la clé publique (alerte Supabase `rls_disabled_in_public`). Migration `0002` (RLS activée) et test d'intégration qui exige la RLS sur **toutes** les tables du schéma `public`.
